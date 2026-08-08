@@ -9,8 +9,12 @@ The glossary is in English because the game's own vocabulary is English and thos
 ### Materials and recipes
 
 **Part**:
-Anything that flows through a production chain, whether solid or fluid. Fluids are Parts too — they differ only in their unit (m³/min rather than items/min) and in the fact that they cannot be sunk without packaging.
+Anything that flows through a production chain, whatever its Part State.
 _Avoid_: Item, material, product, component
+
+**Part State**:
+Whether a Part is solid, fluid or gas — a closed set of three, never a solid/not-solid flag, because nitrogen gas is neither. Solids are counted in items/min and can be sunk directly. Fluids and gases are measured in m³/min, travel by pipe, and cannot be sunk without being packaged first.
+_Avoid_: Type, kind, form, phase, isFluid
 
 **Resource**:
 A Part with no recipe: extracted directly from the map rather than produced. Ore, crude oil, water, nitrogen gas. The leaves of every production chain.
@@ -39,7 +43,7 @@ _Avoid_: Gain, benefit, score, saving
 ### Planning
 
 **Rate**:
-A throughput, always per minute: items/min for solid Parts, m³/min for fluid Parts. No other time unit appears anywhere in the app.
+A throughput, always per minute: items/min for solid Parts, m³/min for fluids and gases. No other time unit appears anywhere in the app.
 _Avoid_: Throughput, speed, per-second, flow rate
 
 **Target**:
@@ -57,7 +61,7 @@ _Avoid_: Overclock, clock, speed, efficiency
 ### Optimisation
 
 **Resource Weight**:
-The scarcity price of one unit per minute of a Resource, defined as `1 / (total available per minute of that Resource across the whole map)`. Water and nitrogen approach zero; uranium and SAM are expensive.
+The scarcity price of one unit per minute of a Resource, defined as `1 / (total available per minute of that Resource across the whole map)`. Water is the only Resource with no limit — extractors need no node and can be placed on any lake — so it alone weighs zero. Every other Resource is finite and priced accordingly, including the gases: nitrogen comes from six resource wells and is genuinely scarce. Part State says nothing about scarcity.
 _Avoid_: Cost, price, multiplier
 
 **Scarcity Cost**:
