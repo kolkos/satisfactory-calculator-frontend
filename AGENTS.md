@@ -8,15 +8,16 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 
 ## Angular Best Practices
 
+This project is pinned to **Angular 21** — see `docs/adr/0005-pinned-to-angular-21.md` for why. Features introduced in v22 are not available; the rules below are written for v21 and should be revisited when the pin is lifted.
+
 - Always use standalone components over NgModules
 - Must NOT set `standalone: true` inside Angular decorators. It's the default in Angular v20+.
-- Do NOT set `changeDetection: ChangeDetectionStrategy.OnPush` explicitly. `OnPush` is the default in Angular v22+.
+- DO set `changeDetection: ChangeDetectionStrategy.OnPush` explicitly on components. It only becomes the default in v22.
 - Use signals for state management
 - Implement lazy loading for feature routes
 - Do NOT use the `@HostBinding` and `@HostListener` decorators. Put host bindings inside the `host` object of the `@Component` or `@Directive` decorator instead
 - Use `NgOptimizedImage` for all static images.
   - `NgOptimizedImage` does not work for inline base64 images.
-
 ## Accessibility Requirements
 
 - It MUST pass all AXE checks.
@@ -30,8 +31,8 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Use `computed()` for derived state
 - Use `linkedSignal()` for state derived from multiple reactive sources that must stay synchronized
 - Prefer inline templates for small components
-- Prefer Signal Forms (`@angular/forms/signals`) for new forms. They are stable in Angular v22+ and provide signal-based state, type-safe field access, and schema-based validation
-- When not using Signal Forms, prefer Reactive forms instead of Template-driven ones
+- Do NOT use Signal Forms (`@angular/forms/signals`). The import resolves in v21 but the API is experimental there; it is only stable from v22
+- Prefer Reactive forms instead of Template-driven ones
 - Do NOT use `ngClass`, use `class` bindings instead
 - Do NOT use `ngStyle`, use `style` bindings instead
 - When using external templates/styles, use paths relative to the component TS file.
@@ -53,8 +54,7 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 ## Services
 
 - Design services around a single responsibility
-- Use the `providedIn: 'root'` option for singleton services
-- Prefer the `@Service` decorator over `@Injectable({providedIn: 'root'})` for new singleton services (Angular v22+)
+- Use `@Injectable({ providedIn: 'root' })` for singleton services. The `@Service` decorator only exists from v22 and is unavailable here
 - Use the `inject()` function instead of constructor injection
 
 ## Agent skills

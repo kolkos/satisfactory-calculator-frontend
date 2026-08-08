@@ -1,6 +1,6 @@
 # SatisfactoryCalculatorFrontend
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.1.3.
+This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 22.1.3, and is now pinned to Angular 21 — see [ADR-0005](docs/adr/0005-pinned-to-angular-21.md).
 
 ## Development server
 
