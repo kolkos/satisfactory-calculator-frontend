@@ -189,8 +189,26 @@ export function parseDataset(input: unknown): Dataset {
     recipes: asArray(raw['recipes'], 'recipes').map((recipe, i) =>
       parseRecipe(recipe, `recipes[${i}]`, knownParts),
     ),
-    resources: asArray(raw['resources'], 'resources').map((resource, i) =>
-      parseResource(resource, `resources[${i}]`, knownParts),
-    ),
+    resources: parseResources(raw['resources'], knownParts),
   };
+}
+
+/**
+ * Resources are keyed by Part downstream, so two rows for one Part would be
+ * last-wins on a Resource Weight — the same silent corruption duplicate Part ids
+ * are rejected for.
+ */
+function parseResources(value: unknown, knownParts: ReadonlySet<string>): readonly Resource[] {
+  const seen = new Set<string>();
+  return asArray(value, 'resources').map((raw, i) => {
+    const resource = parseResource(raw, `resources[${i}]`, knownParts);
+    if (seen.has(resource.part)) {
+      throw new DatasetValidationError(
+        `resources[${i}].part`,
+        `duplicate Resource row for Part "${resource.part}"`,
+      );
+    }
+    seen.add(resource.part);
+    return resource;
+  });
 }

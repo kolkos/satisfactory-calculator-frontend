@@ -110,6 +110,13 @@ describe('parseDataset', () => {
     expect(parseDataset(raw).resources[0].weight).toBe(0);
   });
 
+  it('rejects a duplicate Resource row for one Part, naming the field', () => {
+    const raw = validRaw();
+    raw['resources'] = [validResource(), { ...validResource(), weight: 0.5 }];
+
+    expect(() => parseDataset(raw)).toThrow(/resources\[1]\.part/);
+  });
+
   it('rejects a Resource with no Resource Weight, naming the field', () => {
     const raw = validRaw();
     raw['resources'] = [{ part: 'IronOre', extractorRate: 60 }];
