@@ -47,6 +47,78 @@ function chainDataset(): Dataset {
   };
 }
 
+/**
+ * Two default Recipes for one Widget. Through OreA it costs 10 units of a scarce
+ * Resource; through OreB, 50 units of an abundant one. Weights are passed in so a
+ * test can flip which Resource is scarce without touching anything else.
+ */
+function choiceDataset(weights: { oreA: number; oreB: number }): Dataset {
+  return {
+    gameVersion: 'test',
+    parts: [
+      { id: 'OreA', name: 'Ore A', state: 'solid' },
+      { id: 'OreB', name: 'Ore B', state: 'solid' },
+      { id: 'Widget', name: 'Widget', state: 'solid' },
+    ],
+    recipes: [
+      {
+        id: 'Widget_FromA',
+        name: 'Widget from A',
+        building: 'Constructor',
+        alternate: false,
+        inputs: [{ part: 'OreA', rate: 10 }],
+        outputs: [{ part: 'Widget', rate: 10 }],
+      },
+      {
+        id: 'Widget_FromB',
+        name: 'Widget from B',
+        building: 'Constructor',
+        alternate: false,
+        inputs: [{ part: 'OreB', rate: 50 }],
+        outputs: [{ part: 'Widget', rate: 10 }],
+      },
+    ],
+    resources: [
+      { part: 'OreA', weight: weights.oreA, extractorRate: 60 },
+      { part: 'OreB', weight: weights.oreB, extractorRate: 60 },
+    ],
+  };
+}
+
+/**
+ * One Widget, two ways: the default at 10 ore, and an Alternate at 4. The
+ * Alternate is strictly better, so whether it is used says exactly one thing —
+ * whether the Unlock Profile let it into the model.
+ */
+function alternateDataset(): Dataset {
+  return {
+    gameVersion: 'test',
+    parts: [
+      { id: 'OreA', name: 'Ore A', state: 'solid' },
+      { id: 'Widget', name: 'Widget', state: 'solid' },
+    ],
+    recipes: [
+      {
+        id: 'Widget_Base',
+        name: 'Widget',
+        building: 'Constructor',
+        alternate: false,
+        inputs: [{ part: 'OreA', rate: 10 }],
+        outputs: [{ part: 'Widget', rate: 10 }],
+      },
+      {
+        id: 'Widget_Pure',
+        name: 'Pure Widget',
+        building: 'Refinery',
+        alternate: true,
+        inputs: [{ part: 'OreA', rate: 4 }],
+        outputs: [{ part: 'Widget', rate: 10 }],
+      },
+    ],
+    resources: [{ part: 'OreA', weight: 1, extractorRate: 60 }],
+  };
+}
+
 describe('solve', () => {
   it('resolves a single Target through one Recipe to one Resource', () => {
     const result = solve(ingotDataset(), [{ part: 'IronIngot', rate: 60 }]);
@@ -194,5 +266,166 @@ describe('solve', () => {
       'resourceDemand',
     ]);
     expect(JSON.stringify(result.plan)).not.toMatch(/scarcity/i);
+  });
+
+  it('prefers the abundant Resource even though it spends five times the units', () => {
+    // Through A: 10 units at weight 1 = 10. Through B: 50 units at weight 0.01 = 0.5.
+    const result = solve(choiceDataset({ oreA: 1, oreB: 0.01 }), [{ part: 'Widget', rate: 10 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_FromB']);
+    expect(result.plan.resourceDemand).toEqual({ OreB: 50 });
+  });
+
+  it('follows the Resource Weights rather than the order Recipes appear in', () => {
+    // Same Recipes, scarcity swapped: now A is the cheap route and B the expensive one.
+    const result = solve(choiceDataset({ oreA: 0.01, oreB: 1 }), [{ part: 'Widget', rate: 10 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_FromA']);
+    expect(result.plan.resourceDemand).toEqual({ OreA: 10 });
+  });
+
+  it('never uses an Alternate the Unlock Profile does not hold', () => {
+    const result = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_Base']);
+    expect(result.plan.resourceDemand).toEqual({ OreA: 10 });
+  });
+
+  it('treats an empty Unlock Profile as the default, so the Profile is optional', () => {
+    const withoutProfile = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }]);
+    const withEmptyProfile = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
+
+    expect(withoutProfile).toEqual(withEmptyProfile);
+  });
+
+  it('returns a different Plan once the Alternate is unlocked', () => {
+    const locked = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
+    const unlocked = solve(
+      alternateDataset(),
+      [{ part: 'Widget', rate: 10 }],
+      new Set(['Widget_Pure']),
+    );
+
+    expect(locked.status).toBe('optimal');
+    expect(unlocked.status).toBe('optimal');
+    if (locked.status !== 'optimal' || unlocked.status !== 'optimal') return;
+
+    // Same question, same data — only the Profile differs, and 10 ore becomes 4.
+    expect(locked.plan.resourceDemand).toEqual({ OreA: 10 });
+    expect(unlocked.plan.resourceDemand).toEqual({ OreA: 4 });
+    expect(unlocked.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_Pure']);
+    expect(unlocked.plan.machinesByBuilding).toEqual({ Refinery: 1 });
+  });
+
+  it('still squanders a zero-weight Resource, because nothing yet costs machines', () => {
+    // Pins today's behaviour so #7 has something to break. An Alternate that saves
+    // one unit of ore by drinking 10,000 m³ of water wins outright, because a
+    // Resource Weight of zero makes the water free and no machine cost opposes it.
+    const dataset: Dataset = {
+      gameVersion: 'test',
+      parts: [
+        { id: 'OreA', name: 'Ore A', state: 'solid' },
+        { id: 'Water', name: 'Water', state: 'fluid' },
+        { id: 'Widget', name: 'Widget', state: 'solid' },
+      ],
+      recipes: [
+        {
+          id: 'Widget_Base',
+          name: 'Widget',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 10 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+        {
+          id: 'Widget_Wet',
+          name: 'Wet Widget',
+          building: 'Refinery',
+          alternate: true,
+          inputs: [
+            { part: 'OreA', rate: 9 },
+            { part: 'Water', rate: 10_000 },
+          ],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+      ],
+      resources: [
+        { part: 'OreA', weight: 1, extractorRate: 60 },
+        { part: 'Water', weight: 0, extractorRate: 120 },
+      ],
+    };
+
+    const result = solve(dataset, [{ part: 'Widget', rate: 10 }], new Set(['Widget_Wet']));
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.resourceDemand).toEqual({ OreA: 9, Water: 10_000 });
+  });
+
+  it('keeps float dust out of a machine count summed across Recipes', () => {
+    // The solver rounds each variable, but adding two rounded values makes fresh
+    // dust: 0.1 + 0.2 is 0.30000000000000004. Both Recipes share a building, so
+    // the sum is what a player would see.
+    const dataset: Dataset = {
+      gameVersion: 'test',
+      parts: [
+        { id: 'OreA', name: 'Ore A', state: 'solid' },
+        { id: 'WidgetA', name: 'Widget A', state: 'solid' },
+        { id: 'WidgetB', name: 'Widget B', state: 'solid' },
+      ],
+      recipes: [
+        {
+          id: 'WidgetA',
+          name: 'Widget A',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 100 }],
+          outputs: [{ part: 'WidgetA', rate: 100 }],
+        },
+        {
+          id: 'WidgetB',
+          name: 'Widget B',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 100 }],
+          outputs: [{ part: 'WidgetB', rate: 100 }],
+        },
+      ],
+      resources: [{ part: 'OreA', weight: 1, extractorRate: 60 }],
+    };
+
+    const result = solve(dataset, [
+      { part: 'WidgetA', rate: 10 },
+      { part: 'WidgetB', rate: 20 },
+    ]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.machinesByBuilding).toEqual({ Constructor: 0.3 });
+  });
+
+  it('returns a Plan for a Target far beyond what the map could supply', () => {
+    const result = solve(ingotDataset(), [{ part: 'IronIngot', rate: 1_000_000 }]);
+
+    // Scarcity Cost prices Resources; it does not cap them. "Here is what it would
+    // take" beats refusing to answer.
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // A solver works to a tolerance, so 1e6/30 is asserted as a closeness rather
+    // than as exact float equality.
+    expect(result.plan.resourceDemand['IronOre']).toBeCloseTo(1_000_000, 6);
+    expect(result.plan.machinesByBuilding['Smelter']).toBeCloseTo(1_000_000 / 30, 6);
   });
 });

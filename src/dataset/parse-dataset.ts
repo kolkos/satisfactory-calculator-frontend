@@ -186,11 +186,25 @@ export function parseDataset(input: unknown): Dataset {
   return {
     gameVersion,
     parts,
-    recipes: asArray(raw['recipes'], 'recipes').map((recipe, i) =>
-      parseRecipe(recipe, `recipes[${i}]`, knownParts),
-    ),
+    recipes: parseRecipes(raw['recipes'], knownParts),
     resources: parseResources(raw['resources'], knownParts),
   };
+}
+
+/**
+ * A Recipe id is what an Unlock Profile names to admit an Alternate, so a
+ * duplicate would make unlocking one Recipe silently enable or drop another.
+ */
+function parseRecipes(value: unknown, knownParts: ReadonlySet<string>): readonly Recipe[] {
+  const seen = new Set<string>();
+  return asArray(value, 'recipes').map((raw, i) => {
+    const recipe = parseRecipe(raw, `recipes[${i}]`, knownParts);
+    if (seen.has(recipe.id)) {
+      throw new DatasetValidationError(`recipes[${i}].id`, `duplicate Recipe id "${recipe.id}"`);
+    }
+    seen.add(recipe.id);
+    return recipe;
+  });
 }
 
 /**

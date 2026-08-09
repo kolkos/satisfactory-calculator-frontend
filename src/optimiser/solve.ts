@@ -8,6 +8,15 @@ export interface Target {
 }
 
 /**
+ * The Alternates a particular player has unlocked, by Recipe id. Purely a filter
+ * on which Recipes may enter the model. Empty is valid and is where every player
+ * starts, so it is the default.
+ */
+export type UnlockProfile = ReadonlySet<string>;
+
+const NO_UNLOCKS: UnlockProfile = new Set<string>();
+
+/**
  * One Recipe running in a Plan. `machines` is continuous: 2.5 means three
  * machines with the last underclocked to 50%, never one machine above 100%.
  * Every Rate this Recipe moves is `machines` times its rate in the Dataset.
@@ -41,12 +50,30 @@ const SCARCITY_COST = 'scarcityCost';
 const RECIPE = 'recipe:';
 const SUPPLY = 'supply:';
 
-/** Simplex leaves float dust on numbers that are exact in the problem. */
-function tidy(value: number): number {
-  return Math.round(value * 1e9) / 1e9;
+/** The precision YALPS rounds its own variables to, so sums cannot beat it. */
+const SOLVER_PRECISION = 1e8;
+
+/**
+ * Rounds a machine count accumulated across Recipes. Individual variables arrive
+ * already rounded by the solver, but adding two rounded values makes fresh dust —
+ * 0.1 + 0.2 is 0.30000000000000004 — and the sum is the number a player sees.
+ */
+function roundLikeSolver(value: number): number {
+  return Math.round(value * SOLVER_PRECISION) / SOLVER_PRECISION;
 }
 
-export function solve(dataset: Dataset, targets: readonly Target[]): SolveResult {
+export function solve(
+  dataset: Dataset,
+  targets: readonly Target[],
+  profile: UnlockProfile = NO_UNLOCKS,
+): SolveResult {
+  // An Alternate the player has not researched is not a Recipe they can build, so
+  // it never becomes a variable. Filtering here rather than penalising it in the
+  // objective keeps "cannot build" and "not worth building" separate.
+  const admissible = dataset.recipes.filter(
+    (recipe) => !recipe.alternate || profile.has(recipe.id),
+  );
+
   const demanded = new Map<string, number>();
   for (const target of targets) {
     // A zero, negative or NaN Rate would sail through as a row that constrains
@@ -79,7 +106,7 @@ export function solve(dataset: Dataset, targets: readonly Target[]): SolveResult
 
   // A Recipe variable counts machines, so its coefficient in a Part's row is that
   // Part's net rate through one machine.
-  for (const recipe of dataset.recipes) {
+  for (const recipe of admissible) {
     const column: Record<string, number> = { [SCARCITY_COST]: 0 };
     for (const input of recipe.inputs) {
       column[input.part] = (column[input.part] ?? 0) - input.rate;
@@ -116,20 +143,22 @@ export function solve(dataset: Dataset, targets: readonly Target[]): SolveResult
     return { status: 'failed', reason: `solver returned "${solution.status}"` };
   }
 
-  const recipesById = new Map(dataset.recipes.map((recipe) => [recipe.id, recipe]));
+  const recipesById = new Map(admissible.map((recipe) => [recipe.id, recipe]));
   const recipes: PlannedRecipe[] = [];
   const machinesByBuilding: Record<string, number> = {};
   const resourceDemand: Record<string, number> = {};
 
-  for (const [key, rawValue] of solution.variables) {
-    const value = tidy(rawValue);
+  // Per-variable values arrive already rounded by the solver, so they are taken as
+  // they come. Only the accumulated machine counts are rounded again, because
+  // adding rounded values is what reintroduces dust.
+  for (const [key, value] of solution.variables) {
     if (value === 0) continue;
 
     if (key.startsWith(RECIPE)) {
       const recipe = recipesById.get(key.slice(RECIPE.length));
       if (recipe === undefined) continue;
       recipes.push({ recipe: recipe.id, building: recipe.building, machines: value });
-      machinesByBuilding[recipe.building] = tidy(
+      machinesByBuilding[recipe.building] = roundLikeSolver(
         (machinesByBuilding[recipe.building] ?? 0) + value,
       );
     } else if (key.startsWith(SUPPLY)) {

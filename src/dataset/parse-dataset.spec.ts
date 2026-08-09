@@ -65,6 +65,13 @@ describe('parseDataset', () => {
     expect(() => parseDataset(raw)).toThrow(/parts\[2]\.id/);
   });
 
+  it('rejects a duplicate Recipe id, naming the field', () => {
+    const raw = validRaw();
+    raw['recipes'] = [validRecipe(), { ...validRecipe(), building: 'Foundry' }];
+
+    expect(() => parseDataset(raw)).toThrow(/recipes\[1]\.id/);
+  });
+
   it('accepts every Part State, including gas', () => {
     const raw = validRaw();
     raw['parts'] = [
