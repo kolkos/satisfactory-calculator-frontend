@@ -19,7 +19,11 @@ function validResource(): Record<string, unknown> {
 /** A minimal dataset that parses cleanly. Tests override one field at a time. */
 function validRaw(): Record<string, unknown> {
   return {
-    gameVersion: '1.0.0.4',
+    source: {
+      url: 'https://satisfactory.wiki.gg/api.php',
+      fetchedAt: '2026-08-11T00:00:00Z',
+      revisions: { 'Template:DocsRecipes.json': 62572 },
+    },
     parts: [
       { id: 'IronOre', name: 'Iron Ore', state: 'solid' },
       { id: 'IronIngot', name: 'Iron Ingot', state: 'solid' },
@@ -33,7 +37,7 @@ describe('parseDataset', () => {
   it('accepts a well-formed dataset', () => {
     const dataset = parseDataset(validRaw());
 
-    expect(dataset.gameVersion).toBe('1.0.0.4');
+    expect(dataset.source.revisions).toEqual({ 'Template:DocsRecipes.json': 62572 });
     expect(dataset.parts).toHaveLength(2);
     expect(dataset.recipes[0].building).toBe('Smelter');
     expect(dataset.recipes[0].inputs[0]).toEqual({ part: 'IronOre', rate: 30 });

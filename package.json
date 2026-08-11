@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "generate:dataset": "node --experimental-strip-types scripts/generate-dataset.mts"
   },
   "private": true,
   "packageManager": "npm@11.19.0",
@@ -28,6 +29,7 @@
     "@angular/cli": "^21.2.20",
     "@angular/compiler-cli": "^21.2.19",
     "@tailwindcss/postcss": "^4.1.12",
+    "@types/node": "^22.20.1",
     "jsdom": "^28.0.0",
     "postcss": "^8.5.3",
     "prettier": "^3.8.1",

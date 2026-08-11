@@ -1,0 +1,13 @@
+/* Type-checks the maintenance scripts, which are not part of the application. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["scripts/**/*.mts", "src/dataset/**/*.ts"],
+  "exclude": ["src/**/*.spec.ts"]
+}

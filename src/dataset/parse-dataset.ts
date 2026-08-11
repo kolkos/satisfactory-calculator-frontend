@@ -36,8 +36,20 @@ export interface Resource {
   readonly extractorRate: number;
 }
 
+/**
+ * Where this Dataset came from. Not a game version — the upstream source is a
+ * wiki that publishes no version number — but its page revisions are stable and
+ * citable, so they serve the same purpose: two Datasets with the same revisions
+ * were built from the same bytes.
+ */
+export interface DatasetSource {
+  readonly url: string;
+  readonly fetchedAt: string;
+  readonly revisions: Readonly<Record<string, number>>;
+}
+
 export interface Dataset {
-  readonly gameVersion: string;
+  readonly source: DatasetSource;
   readonly parts: readonly Part[];
   readonly recipes: readonly Recipe[];
   readonly resources: readonly Resource[];
@@ -48,12 +60,17 @@ export interface Dataset {
  * path of the offending field so regenerating the dataset is not guesswork.
  */
 export class DatasetValidationError extends Error {
-  constructor(
-    readonly path: string,
-    readonly detail: string,
-  ) {
+  // Declared as fields rather than constructor parameter properties so this
+  // module can be run directly by the generation script, which strips types
+  // without transforming them.
+  readonly path: string;
+  readonly detail: string;
+
+  constructor(path: string, detail: string) {
     super(`${path}: ${detail}`);
     this.name = 'DatasetValidationError';
+    this.path = path;
+    this.detail = detail;
   }
 }
 
@@ -166,9 +183,23 @@ function parseResource(value: unknown, path: string, knownParts: ReadonlySet<str
  * The dataset arrives over the wire rather than through a typed import, so its
  * shape is checked here rather than assumed.
  */
+function parseSource(value: unknown, path: string): DatasetSource {
+  const raw = asRecord(value, path);
+  const revisions = asRecord(raw['revisions'], `${path}.revisions`);
+  const parsed: Record<string, number> = {};
+  for (const [page, revision] of Object.entries(revisions)) {
+    parsed[page] = asNumber(revision, `${path}.revisions.${page}`, 'positive');
+  }
+  return {
+    url: asString(raw['url'], `${path}.url`),
+    fetchedAt: asString(raw['fetchedAt'], `${path}.fetchedAt`),
+    revisions: parsed,
+  };
+}
+
 export function parseDataset(input: unknown): Dataset {
   const raw = asRecord(input, 'dataset');
-  const gameVersion = asString(raw['gameVersion'], 'gameVersion');
+  const source = parseSource(raw['source'], 'source');
   const parts = asArray(raw['parts'], 'parts').map((part, i) => parsePart(part, `parts[${i}]`));
 
   // Parts are parsed first so everything referencing them can be checked against
@@ -184,7 +215,7 @@ export function parseDataset(input: unknown): Dataset {
   });
 
   return {
-    gameVersion,
+    source,
     parts,
     recipes: parseRecipes(raw['recipes'], knownParts),
     resources: parseResources(raw['resources'], knownParts),

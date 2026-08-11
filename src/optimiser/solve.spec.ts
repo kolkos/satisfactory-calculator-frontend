@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { Dataset } from '../dataset/parse-dataset';
 import { solve } from './solve';
 
+const TEST_SOURCE = { url: 'test', fetchedAt: '2026-01-01T00:00:00Z', revisions: {} };
+
 /**
  * Iron Ore is smelted into Iron Ingot one for one, 30/min per Smelter.
  * Small enough that every expected number below can be worked out on paper.
  */
 function ingotDataset(): Dataset {
   return {
-    gameVersion: 'test',
+    source: TEST_SOURCE,
     parts: [
       { id: 'IronOre', name: 'Iron Ore', state: 'solid' },
       { id: 'IronIngot', name: 'Iron Ingot', state: 'solid' },
@@ -54,7 +56,7 @@ function chainDataset(): Dataset {
  */
 function choiceDataset(weights: { oreA: number; oreB: number }): Dataset {
   return {
-    gameVersion: 'test',
+    source: TEST_SOURCE,
     parts: [
       { id: 'OreA', name: 'Ore A', state: 'solid' },
       { id: 'OreB', name: 'Ore B', state: 'solid' },
@@ -92,7 +94,7 @@ function choiceDataset(weights: { oreA: number; oreB: number }): Dataset {
  */
 function alternateDataset(): Dataset {
   return {
-    gameVersion: 'test',
+    source: TEST_SOURCE,
     parts: [
       { id: 'OreA', name: 'Ore A', state: 'solid' },
       { id: 'Widget', name: 'Widget', state: 'solid' },
@@ -331,7 +333,7 @@ describe('solve', () => {
     // one unit of ore by drinking 10,000 m³ of water wins outright, because a
     // Resource Weight of zero makes the water free and no machine cost opposes it.
     const dataset: Dataset = {
-      gameVersion: 'test',
+      source: TEST_SOURCE,
       parts: [
         { id: 'OreA', name: 'Ore A', state: 'solid' },
         { id: 'Water', name: 'Water', state: 'fluid' },
@@ -377,7 +379,7 @@ describe('solve', () => {
     // dust: 0.1 + 0.2 is 0.30000000000000004. Both Recipes share a building, so
     // the sum is what a player would see.
     const dataset: Dataset = {
-      gameVersion: 'test',
+      source: TEST_SOURCE,
       parts: [
         { id: 'OreA', name: 'Ore A', state: 'solid' },
         { id: 'WidgetA', name: 'Widget A', state: 'solid' },
