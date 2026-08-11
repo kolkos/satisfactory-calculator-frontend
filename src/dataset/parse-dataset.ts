@@ -170,19 +170,13 @@ function parseResource(value: unknown, path: string, knownParts: ReadonlySet<str
   return {
     part: asKnownPart(raw['part'], `${path}.part`, knownParts),
     // Zero is deliberate, not an oversight: unbounded Resources such as water have
-    // no node limit, so their Resource Weight really is zero. Extraction still costs
-    // machines, which is what stops the optimiser squandering them.
+    // no node limit, so their Resource Weight really is zero. Nothing yet stops the
+    // optimiser exploiting that — see the note on `unbounded` in build-dataset.ts.
     weight: asNumber(raw['weight'], `${path}.weight`, 'non-negative'),
     extractorRate: asNumber(raw['extractorRate'], `${path}.extractorRate`, 'positive'),
   };
 }
 
-/**
- * Turns untrusted JSON into a Dataset, or throws naming the field that failed.
- *
- * The dataset arrives over the wire rather than through a typed import, so its
- * shape is checked here rather than assumed.
- */
 function parseSource(value: unknown, path: string): DatasetSource {
   const raw = asRecord(value, path);
   const revisions = asRecord(raw['revisions'], `${path}.revisions`);
@@ -197,6 +191,12 @@ function parseSource(value: unknown, path: string): DatasetSource {
   };
 }
 
+/**
+ * Turns untrusted JSON into a Dataset, or throws naming the field that failed.
+ *
+ * The dataset arrives over the wire rather than through a typed import, so its
+ * shape is checked here rather than assumed.
+ */
 export function parseDataset(input: unknown): Dataset {
   const raw = asRecord(input, 'dataset');
   const source = parseSource(raw['source'], 'source');

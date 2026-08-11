@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "generate:dataset": "node --experimental-strip-types scripts/generate-dataset.mts"
+    "generate:dataset": "node --experimental-strip-types scripts/generate-dataset.mts",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.spec.json --noEmit && tsc -p tsconfig.scripts.json"
   },
   "private": true,
   "packageManager": "npm@11.19.0",

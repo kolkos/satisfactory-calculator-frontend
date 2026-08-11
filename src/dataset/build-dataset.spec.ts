@@ -73,6 +73,7 @@ describe('buildDataset', () => {
         },
       }),
       STAMP,
+      [],
     );
 
     // One per craft, two seconds a craft, so thirty a minute.
@@ -119,6 +120,7 @@ describe('buildDataset', () => {
         },
       }),
       STAMP,
+      [],
     );
 
     expect(new Map(dataset.parts.map((part) => [part.id, part.state]))).toEqual(
@@ -154,6 +156,7 @@ describe('buildDataset', () => {
         },
       }),
       STAMP,
+      [],
     );
 
     expect(dataset.recipes).toEqual([]);
@@ -182,6 +185,7 @@ describe('buildDataset', () => {
         },
       }),
       STAMP,
+      [],
     );
 
     expect(dataset.recipes[0].alternate).toBe(true);
@@ -212,13 +216,62 @@ describe('buildDataset', () => {
         },
       }),
       STAMP,
+      [],
     );
 
     expect(dataset.parts.map((part) => part.id)).toEqual(['P']);
   });
 
+  it('refuses to build when a Resource class name is missing upstream', () => {
+    // The Resource class names are transcribed from the wiki's Resource Node
+    // pages, a different source from the items template, so they can drift apart.
+    // Dropping the Resource would leave every chain needing it quietly infeasible.
+    expect(() =>
+      buildDataset(
+        docs({
+          items: { Desc_OreIron_C: [{ className: 'Desc_OreIron_C', name: 'Iron', form: 'solid' }] },
+        }),
+        STAMP,
+      ),
+    ).toThrow(/Desc_SAM_C/);
+  });
+
+  it('refuses to build when a Recipe names a building that is missing upstream', () => {
+    const items = Object.fromEntries(
+      RESOURCES.map((spec) => [
+        spec.part,
+        [{ className: spec.part, name: spec.part, form: 'solid' as const }],
+      ]),
+    );
+
+    expect(() =>
+      buildDataset(
+        docs({
+          items,
+          buildings: {},
+          recipes: {
+            R: [
+              {
+                className: 'R',
+                name: 'R',
+                duration: 1,
+                ingredients: [],
+                products: [{ item: 'Desc_OreIron_C', amount: 1 }],
+                producedIn: ['Desc_GoneMissing_C'],
+                inBuildGun: false,
+                inCustomizer: false,
+                alternate: false,
+              },
+            ],
+          },
+        }),
+        STAMP,
+      ),
+    ).toThrow(/Desc_GoneMissing_C/);
+  });
+
   it('carries the source stamp through unchanged', () => {
-    const dataset = buildDataset(docs({}), STAMP);
+    const dataset = buildDataset(docs({}), STAMP, []);
 
     expect(dataset.source).toEqual(STAMP);
   });

@@ -50,7 +50,7 @@ interface NodeGroup {
   readonly normalRate: number;
 }
 
-interface ResourceSpec {
+export interface ResourceSpec {
   readonly part: string;
   /** One extractor's nominal output, as the game's own building description states it. */
   readonly extractorRate: number;
@@ -64,9 +64,13 @@ interface ResourceSpec {
   readonly publishedMax: number;
   readonly publishedMaxFactor: number;
   /**
-   * Water alone has no node limit: extractors need no node and any lake will do.
-   * Its Resource Weight is therefore zero, and only the machine cost of pumping
-   * it stops the optimiser treating it as infinitely available.
+   * Water alone has no node limit: extractors need no node and any lake will do,
+   * so its Resource Weight is zero.
+   *
+   * Nothing yet stops the optimiser exploiting that. ADR-0001 calls for extraction
+   * to be modelled as a machine-costed Recipe and for a second, machine-minimising
+   * optimisation phase, which is where the cost of pumping absurd volumes would
+   * come from. Neither exists yet, so until then water is genuinely free.
    */
   readonly unbounded?: boolean;
 }
@@ -213,9 +217,22 @@ function only<T>(entries: readonly T[] | undefined): T | undefined {
   return entries?.[0];
 }
 
-export function buildDataset(docs: WikiDocs, source: DatasetSource): Dataset {
+/** Thrown when upstream no longer matches what this transformation assumes. */
+export class DatasetBuildError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DatasetBuildError';
+  }
+}
+
+export function buildDataset(
+  docs: WikiDocs,
+  source: DatasetSource,
+  specs: readonly ResourceSpec[] = RESOURCES,
+): Dataset {
   const recipes: Recipe[] = [];
   const referenced = new Set<string>();
+  const unknownBuildings = new Set<string>();
 
   for (const entry of Object.values(docs.recipes)) {
     const raw = only(entry);
@@ -227,8 +244,14 @@ export function buildDataset(docs: WikiDocs, source: DatasetSource): Dataset {
     const buildingClass = only(raw.producedIn);
     if (buildingClass === undefined) continue;
 
+    // Upstream is a wiki that changes under us. A renamed building class would
+    // otherwise drop every Recipe made in it, leaving a dataset that validates
+    // cleanly and is quietly missing a whole production step.
     const building = only(docs.buildings[buildingClass]);
-    if (building === undefined) continue;
+    if (building === undefined) {
+      unknownBuildings.add(buildingClass);
+      continue;
+    }
 
     const flows = (list: readonly WikiFlow[]) =>
       list.map((flow) => {
@@ -246,9 +269,24 @@ export function buildDataset(docs: WikiDocs, source: DatasetSource): Dataset {
     });
   }
 
-  const resources = RESOURCE_SPECS.filter((spec) => docs.items[spec.part] !== undefined).map(
-    toResource,
-  );
+  if (unknownBuildings.size > 0) {
+    throw new DatasetBuildError(
+      `producedIn names buildings absent from the buildings template: ${[...unknownBuildings].sort().join(', ')}`,
+    );
+  }
+
+  // The Resource class names are hand-transcribed from the wiki's Resource Node
+  // pages — a different source from the items template — so they can drift apart.
+  // Silently dropping one would make every chain needing it infeasible, with the
+  // dataset still passing validation and nothing to point at.
+  const missing = specs.filter((spec) => docs.items[spec.part] === undefined);
+  if (missing.length > 0) {
+    throw new DatasetBuildError(
+      `Resources absent from the items template: ${missing.map((spec) => spec.part).join(', ')}`,
+    );
+  }
+
+  const resources = specs.map(toResource);
   for (const resource of resources) referenced.add(resource.part);
 
   // Only Parts something actually moves. The source lists equipment, ammo and

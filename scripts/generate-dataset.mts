@@ -33,7 +33,15 @@ async function api(params: Record<string, string>): Promise<unknown> {
   if (!response.ok) {
     throw new Error(`${url} responded ${response.status} ${response.statusText}`);
   }
-  return response.json();
+  const body: unknown = await response.json();
+
+  // MediaWiki answers maxlag, read-only and rate-limit conditions with HTTP 200
+  // and an error in the body, so response.ok proves nothing on its own.
+  const error = (body as { error?: { code?: string; info?: string } }).error;
+  if (error !== undefined) {
+    throw new Error(`${url} returned error ${error.code}: ${error.info}`);
+  }
+  return body;
 }
 
 /** The revision each template is at, so the dataset can name the bytes it came from. */
@@ -50,6 +58,13 @@ async function fetchRevisions(): Promise<Record<string, number>> {
     const revid = page.revisions?.[0]?.revid;
     if (revid === undefined) throw new Error(`no revision for ${page.title}`);
     revisions[page.title] = revid;
+  }
+
+  // An empty or partial result would otherwise pass validation and produce a
+  // dataset with no provenance — the one thing the stamp exists to prevent.
+  const missing = Object.values(TEMPLATES).filter((title) => revisions[title] === undefined);
+  if (missing.length > 0) {
+    throw new Error(`no revision returned for ${missing.join(', ')}`);
   }
   return revisions;
 }
@@ -91,13 +106,15 @@ async function main(): Promise<void> {
   // fail at runtime fails here instead, while someone is watching.
   parseDataset(JSON.parse(JSON.stringify(dataset)));
 
-  await mkdir(dirname(DATASET_FILE), { recursive: true });
-  await writeFile(DATASET_FILE, `${JSON.stringify(dataset, null, 1)}\n`);
-
+  // Snapshots first. A dataset without the bytes it was derived from is worse
+  // than no dataset: it looks committable while being unreproducible.
   await mkdir(SNAPSHOT_DIR, { recursive: true });
   for (const [name, raw] of snapshots) {
     await writeFile(join(SNAPSHOT_DIR, name), raw.endsWith('\n') ? raw : `${raw}\n`);
   }
+
+  await mkdir(dirname(DATASET_FILE), { recursive: true });
+  await writeFile(DATASET_FILE, `${JSON.stringify(dataset, null, 1)}\n`);
 
   console.log(
     `\nWrote ${dataset.parts.length} Parts, ${dataset.recipes.length} Recipes ` +
