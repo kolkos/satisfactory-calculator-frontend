@@ -32,8 +32,6 @@ export interface Recipe {
 /** Which generation of mining machine a Plan assumes. */
 export type ExtractorTier = 1 | 2 | 3;
 
-export const EXTRACTOR_TIERS: readonly ExtractorTier[] = [1, 2, 3];
-
 /** One generation of extractor, and what it yields on a normal node unclocked. */
 export interface Extractor {
   readonly building: string;
@@ -64,6 +62,11 @@ function tierIndex(resource: Resource, tier: ExtractorTier): number {
 /**
  * The scarcity price of one unit per minute of this Resource at a given tier:
  * one over what the whole map yields. Zero where the map imposes no limit.
+ *
+ * Throws rather than returning a status, unlike everything in the solver: the
+ * boundary has already rejected any Resource whose entries do not line up, so
+ * reaching this is a caller passing a hand-built Dataset that never could have
+ * been loaded. That is a defect to surface, not a Plan that cannot be built.
  */
 export function resourceWeight(resource: Resource, tier: ExtractorTier): number {
   if (resource.unbounded) return 0;

@@ -8,11 +8,11 @@ Only mined Resources have tiers. The Oil Extractor, Water Extractor and Resource
 
 That is a real change in the answer, not a rounding difference. Solving the committed dataset for the same Targets at Mk.1 and at Mk.3, with every Alternate unlocked, returns different chains:
 
-| Target | Mk.1 chooses | Mk.3 chooses |
-| --- | --- | --- |
-| Steel Ingot | Coke Steel Ingot, via Petroleum Coke from oil | Solid Steel Ingot and Pure Iron Ingot |
-| Computer | Circuit Board and Insulated Cable | the Caterium Computer line throughout |
-| Aluminum Casing | Residual Plastic | Residual Rubber |
+| Target          | Mk.1 chooses                                  | Mk.3 chooses                          |
+| --------------- | --------------------------------------------- | ------------------------------------- |
+| Steel Ingot     | Coke Steel Ingot, via Petroleum Coke from oil | Solid Steel Ingot and Pure Iron Ingot |
+| Computer        | Circuit Board and Insulated Cable             | the Caterium Computer line throughout |
+| Aluminum Casing | Residual Plastic                              | Residual Rubber                       |
 
 The pattern is consistent: when ore is scarce relative to oil, the optimiser reaches for oil-based routes; when four times as much ore is available and oil is unchanged, oil becomes the binding constraint and it switches to ore-heavy routes. Both answers are correct for the factory they describe.
 
@@ -33,3 +33,5 @@ The Request goes in the URL, so a shared link reproduces the tier along with the
 Machine counts for extraction assume **normal** node purity — the "default extraction rate" the game itself quotes. The true figure is undefined without assigning nodes: iron has 39 impure, 42 normal and 46 pure nodes, so 600 ore/min is anywhere between 1.25 and 5 Mk.3 Miners. Choosing nodes is explicitly out of scope, so the nominal rate is quoted and the player adjusts from what they know about their own site. Note that this deliberately differs from the weight calculation, which uses each Resource's true purity mix: the weight is about what the map can supply in total, the machine count is about one representative machine.
 
 The default is Mk.3, on the grounds that someone reaching for a production planner is usually past the early game.
+
+**Status: partly implemented.** The dataset carries per-tier availability, but the optimiser does not yet take a Request and prices every Plan at Mk.1 — deliberately, so that the data migration could be shown to change no answers. Until the tier is plumbed through (#7), the Mk.3 default described above is not the behaviour you get, and the comparison table above is not reproducible from the committed code: it was produced by solving the same dataset twice with weights recomputed for each tier.

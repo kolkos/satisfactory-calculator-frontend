@@ -40,6 +40,30 @@ describe('resource node table', () => {
     expect(RESOURCES).toHaveLength(13);
   });
 
+  it('builds water as unbounded and everything else with real availability', () => {
+    const items = Object.fromEntries(
+      RESOURCES.map((spec) => [
+        spec.part,
+        [{ className: spec.part, name: spec.part, form: 'solid' as const }],
+      ]),
+    );
+    const built = buildDataset(docs({ items }), STAMP).resources;
+    const water = built.find((resource) => resource.part === 'Desc_Water_C');
+
+    // The one flag load-bearing enough to deserve its own test: water's node group
+    // is quoted at the well extractor's rate while its Extractor is the 120/min
+    // Water Extractor, so losing `unbounded` would not fail loudly — it would
+    // silently price water off the wrong machine and have the optimiser ration it.
+    expect(water?.unbounded).toBe(true);
+    expect(water?.availableByTier).toEqual([]);
+
+    for (const resource of built) {
+      if (resource.part === 'Desc_Water_C') continue;
+      expect(resource.unbounded).toBe(false);
+      expect(resource.availableByTier[0]).toBeGreaterThan(0);
+    }
+  });
+
   it('prices uranium far above iron, since scarcity is the point', () => {
     const total = (part: string, tier: 1 | 2 | 3) => {
       const spec = RESOURCES.find((candidate) => candidate.part === part);

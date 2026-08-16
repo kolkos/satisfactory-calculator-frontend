@@ -2,9 +2,12 @@ import { greaterEq, solve as solveLp } from 'yalps';
 import { resourceWeight, type Dataset, type ExtractorTier } from '../dataset/parse-dataset';
 
 /**
- * The Extractor Tier every Plan is currently priced at. ADR-0006 makes this part
- * of the Plan Request; until the optimiser takes a Request, Mk.1 keeps the
- * answers identical to what they were before availability became tier-aware.
+ * The Extractor Tier every Plan is currently priced at.
+ *
+ * TODO(#7): take this from the Plan Request. ADR-0006 specifies a Mk.3 default,
+ * so this is not that — Mk.1 is here only so the move to per-tier availability
+ * could be shown to change no answers. Until the Request is plumbed through, the
+ * documented default and the shipped behaviour differ.
  */
 const PRICED_AT_TIER: ExtractorTier = 1;
 
