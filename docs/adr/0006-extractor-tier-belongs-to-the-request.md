@@ -34,4 +34,4 @@ Machine counts for extraction assume **normal** node purity — the "default ext
 
 The default is Mk.3, on the grounds that someone reaching for a production planner is usually past the early game.
 
-**Status: partly implemented.** The dataset carries per-tier availability, but the optimiser does not yet take a Request and prices every Plan at Mk.1 — deliberately, so that the data migration could be shown to change no answers. Until the tier is plumbed through (#7), the Mk.3 default described above is not the behaviour you get, and the comparison table above is not reproducible from the committed code: it was produced by solving the same dataset twice with weights recomputed for each tier.
+Machine counts for extraction come out under the extractor's own building name, so a Plan at Mk.3 reports Miner Mk.3 beside its Smelters and Constructors.

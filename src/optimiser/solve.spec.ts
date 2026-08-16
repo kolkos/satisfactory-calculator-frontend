@@ -1,8 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import type { Dataset } from '../dataset/parse-dataset';
-import { solve } from './solve';
+import type { Dataset, ExtractorTier } from '../dataset/parse-dataset';
+import { solve, type Plan, type PlanRequest, type Target, type UnlockProfile } from './solve';
+
+/** Builds a Plan Request so each test states only what it cares about. */
+function plan(
+  dataset: Dataset,
+  targets: readonly Target[],
+  profile?: UnlockProfile,
+  extractorTier?: ExtractorTier,
+) {
+  const request: PlanRequest = { targets, extractorTier };
+  return solve(dataset, request, profile);
+}
 
 const TEST_SOURCE = { url: 'test', fetchedAt: '2026-01-01T00:00:00Z', revisions: {} };
+
+/** Machine counts for the factory itself, leaving extraction aside. */
+function factory(built: Plan): Record<string, number> {
+  const counts = { ...built.machinesByBuilding };
+  delete counts['Extractor'];
+  return counts;
+}
 
 /** A Resource priced at a given weight: availability is one over it. */
 function resource(part: string, weight: number, rate: number) {
@@ -130,7 +148,7 @@ function alternateDataset(): Dataset {
 
 describe('solve', () => {
   it('resolves a single Target through one Recipe to one Resource', () => {
-    const result = solve(ingotDataset(), [{ part: 'IronIngot', rate: 60 }]);
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate: 60 }]);
 
     // 60 ingots a minute needs two Smelters at 30 each, eating 60 ore a minute.
     expect(result.status).toBe('optimal');
@@ -139,24 +157,24 @@ describe('solve', () => {
     expect(result.plan.recipes).toEqual([
       { recipe: 'IronIngot', building: 'Smelter', machines: 2 },
     ]);
-    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 2 });
+    expect(factory(result.plan)).toEqual({ Smelter: 2 });
     expect(result.plan.resourceDemand).toEqual({ IronOre: 60 });
   });
 
   it('walks a chain down to the Resource, grouping machines by building', () => {
-    const result = solve(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
+    const result = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
 
     // 20 plates needs 1 Constructor, which eats 30 ingots, which needs 1 Smelter,
     // which eats 30 ore.
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 1, Constructor: 1 });
+    expect(factory(result.plan)).toEqual({ Smelter: 1, Constructor: 1 });
     expect(result.plan.resourceDemand).toEqual({ IronOre: 30 });
   });
 
   it('satisfies several Targets in one call', () => {
-    const result = solve(chainDataset(), [
+    const result = plan(chainDataset(), [
       { part: 'IronPlate', rate: 20 },
       { part: 'IronIngot', rate: 30 },
     ]);
@@ -166,7 +184,7 @@ describe('solve', () => {
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 2, Constructor: 1 });
+    expect(factory(result.plan)).toEqual({ Smelter: 2, Constructor: 1 });
     expect(result.plan.resourceDemand).toEqual({ IronOre: 60 });
   });
 
@@ -177,7 +195,7 @@ describe('solve', () => {
       parts: [...dataset.parts, { id: 'Screw', name: 'Screw', state: 'solid' }],
     };
 
-    const result = solve(unreachable, [{ part: 'Screw', rate: 10 }]);
+    const result = plan(unreachable, [{ part: 'Screw', rate: 10 }]);
 
     expect(result.status).toBe('infeasible');
   });
@@ -198,29 +216,29 @@ describe('solve', () => {
       ],
     };
 
-    const result = solve(withByproduct, [{ part: 'IronIngot', rate: 30 }]);
+    const result = plan(withByproduct, [{ part: 'IronIngot', rate: 30 }]);
 
     // Nothing consumes Slag. Under equality this would be infeasible; under the
     // inequality the Smelter simply runs and the Slag piles up.
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 1 });
+    expect(factory(result.plan)).toEqual({ Smelter: 1 });
   });
 
   it('returns fractional machine counts rather than rounding up', () => {
-    const result = solve(ingotDataset(), [{ part: 'IronIngot', rate: 45 }]);
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate: 45 }]);
 
     // 45 a minute is one and a half Smelters: two machines, the last at 50%.
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 1.5 });
+    expect(factory(result.plan)).toEqual({ Smelter: 1.5 });
     expect(result.plan.resourceDemand).toEqual({ IronOre: 45 });
   });
 
   it('adds up several Targets naming the same Part', () => {
-    const result = solve(ingotDataset(), [
+    const result = plan(ingotDataset(), [
       { part: 'IronIngot', rate: 30 },
       { part: 'IronIngot', rate: 30 },
     ]);
@@ -228,11 +246,11 @@ describe('solve', () => {
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 2 });
+    expect(factory(result.plan)).toEqual({ Smelter: 2 });
   });
 
   it('answers a Target that is itself a Resource', () => {
-    const result = solve(ingotDataset(), [{ part: 'IronOre', rate: 120 }]);
+    const result = plan(ingotDataset(), [{ part: 'IronOre', rate: 120 }]);
 
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
@@ -242,7 +260,7 @@ describe('solve', () => {
   });
 
   it('names the Part when a Target is not in the Dataset', () => {
-    const result = solve(ingotDataset(), [{ part: 'Concrete', rate: 10 }]);
+    const result = plan(ingotDataset(), [{ part: 'Concrete', rate: 10 }]);
 
     expect(result.status).toBe('infeasible');
     if (result.status !== 'infeasible') return;
@@ -255,7 +273,7 @@ describe('solve', () => {
     ['negative', -5],
     ['not a number', Number.NaN],
   ])('rejects a %s Target Rate rather than returning an empty Plan', (_label, rate) => {
-    const result = solve(ingotDataset(), [{ part: 'IronIngot', rate }]);
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate }]);
 
     expect(result.status).toBe('infeasible');
     if (result.status !== 'infeasible') return;
@@ -264,7 +282,7 @@ describe('solve', () => {
   });
 
   it('keeps Scarcity Cost out of the Plan', () => {
-    const result = solve(ingotDataset(), [{ part: 'IronIngot', rate: 60 }]);
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate: 60 }]);
 
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
@@ -279,7 +297,7 @@ describe('solve', () => {
 
   it('prefers the abundant Resource even though it spends five times the units', () => {
     // Through A: 10 units at weight 1 = 10. Through B: 50 units at weight 0.01 = 0.5.
-    const result = solve(choiceDataset({ oreA: 1, oreB: 0.01 }), [{ part: 'Widget', rate: 10 }]);
+    const result = plan(choiceDataset({ oreA: 1, oreB: 0.01 }), [{ part: 'Widget', rate: 10 }]);
 
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
@@ -290,7 +308,7 @@ describe('solve', () => {
 
   it('follows the Resource Weights rather than the order Recipes appear in', () => {
     // Same Recipes, scarcity swapped: now A is the cheap route and B the expensive one.
-    const result = solve(choiceDataset({ oreA: 0.01, oreB: 1 }), [{ part: 'Widget', rate: 10 }]);
+    const result = plan(choiceDataset({ oreA: 0.01, oreB: 1 }), [{ part: 'Widget', rate: 10 }]);
 
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
@@ -300,7 +318,7 @@ describe('solve', () => {
   });
 
   it('never uses an Alternate the Unlock Profile does not hold', () => {
-    const result = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
+    const result = plan(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
 
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
@@ -310,15 +328,15 @@ describe('solve', () => {
   });
 
   it('treats an empty Unlock Profile as the default, so the Profile is optional', () => {
-    const withoutProfile = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }]);
-    const withEmptyProfile = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
+    const withoutProfile = plan(alternateDataset(), [{ part: 'Widget', rate: 10 }]);
+    const withEmptyProfile = plan(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
 
     expect(withoutProfile).toEqual(withEmptyProfile);
   });
 
   it('returns a different Plan once the Alternate is unlocked', () => {
-    const locked = solve(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
-    const unlocked = solve(
+    const locked = plan(alternateDataset(), [{ part: 'Widget', rate: 10 }], new Set());
+    const unlocked = plan(
       alternateDataset(),
       [{ part: 'Widget', rate: 10 }],
       new Set(['Widget_Pure']),
@@ -332,14 +350,12 @@ describe('solve', () => {
     expect(locked.plan.resourceDemand).toEqual({ OreA: 10 });
     expect(unlocked.plan.resourceDemand).toEqual({ OreA: 4 });
     expect(unlocked.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_Pure']);
-    expect(unlocked.plan.machinesByBuilding).toEqual({ Refinery: 1 });
+    expect(factory(unlocked.plan)).toEqual({ Refinery: 1 });
   });
 
-  it('still squanders a zero-weight Resource, because nothing yet costs machines', () => {
-    // Pins today's behaviour so #7 has something to break. An Alternate that saves
-    // one unit of ore by drinking 10,000 m³ of water wins outright, because a
-    // Resource Weight of zero makes the water free and no machine cost opposes it.
-    const dataset: Dataset = {
+  /** A dry Recipe against a wet one, with the ore each spends as the only variable. */
+  function wetAndDry(dryOre: number, wetOre: number): Dataset {
+    return {
       source: TEST_SOURCE,
       parts: [
         { id: 'OreA', name: 'Ore A', state: 'solid' },
@@ -352,16 +368,16 @@ describe('solve', () => {
           name: 'Widget',
           building: 'Constructor',
           alternate: false,
-          inputs: [{ part: 'OreA', rate: 10 }],
+          inputs: [{ part: 'OreA', rate: dryOre }],
           outputs: [{ part: 'Widget', rate: 10 }],
         },
         {
           id: 'Widget_Wet',
           name: 'Wet Widget',
           building: 'Refinery',
-          alternate: true,
+          alternate: false,
           inputs: [
-            { part: 'OreA', rate: 9 },
+            { part: 'OreA', rate: wetOre },
             { part: 'Water', rate: 10_000 },
           ],
           outputs: [{ part: 'Widget', rate: 10 }],
@@ -369,13 +385,204 @@ describe('solve', () => {
       ],
       resources: [resource('OreA', 1, 60), resource('Water', 0, 120)],
     };
+  }
 
-    const result = solve(dataset, [{ part: 'Widget', rate: 10 }], new Set(['Widget_Wet']));
+  it('declines to squander a zero-weight Resource when nothing is gained by it', () => {
+    // Both Recipes spend the same ore, so Scarcity Cost ties and the machine count
+    // decides. Drinking 10,000 m³ a minute means 84 Water Extractors, so the dry
+    // Recipe wins — which is exactly what extraction costing machines is for.
+    const result = plan(wetAndDry(10, 10), [{ part: 'Widget', rate: 10 }]);
 
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.resourceDemand).toEqual({ OreA: 9, Water: 10_000 });
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_Base']);
+    expect(result.plan.resourceDemand).toEqual({ OreA: 10 });
+  });
+
+  it('still spends any amount of a free Resource to save a scarce one', () => {
+    // The limit of the lexicographic order, pinned so nobody mistakes it for a bug.
+    // Machines only ever break ties in Scarcity Cost, so saving a single unit of ore
+    // outranks 84 Water Extractors however absurd that looks. Fixing it would mean
+    // pricing the two against each other, which ADR-0001 rejects on purpose.
+    const result = plan(wetAndDry(10, 9), [{ part: 'Widget', rate: 10 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['Widget_Wet']);
+    expect(result.plan.resourceDemand['OreA']).toBeCloseTo(9, 3);
+    expect(result.plan.resourceDemand['Water']).toBeCloseTo(10_000, 3);
+  });
+
+  it('breaks a tie in Scarcity Cost on machine count', () => {
+    // Two routes to the same Widget from the same ore at the same Rate, so nothing
+    // separates them but the machines: one Assembler against two Constructors.
+    const dataset: Dataset = {
+      source: TEST_SOURCE,
+      parts: [
+        { id: 'OreA', name: 'Ore A', state: 'solid' },
+        { id: 'Half', name: 'Half', state: 'solid' },
+        { id: 'Widget', name: 'Widget', state: 'solid' },
+      ],
+      recipes: [
+        {
+          id: 'OneStep',
+          name: 'One step',
+          building: 'Assembler',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 10 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+        {
+          id: 'TwoStepA',
+          name: 'Two step, first',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 10 }],
+          outputs: [{ part: 'Half', rate: 10 }],
+        },
+        {
+          id: 'TwoStepB',
+          name: 'Two step, second',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'Half', rate: 10 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+      ],
+      resources: [resource('OreA', 1, 60)],
+    };
+
+    const result = plan(dataset, [{ part: 'Widget', rate: 10 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['OneStep']);
+  });
+
+  it('will not buy a machine with any extra Resource, however cheap', () => {
+    // The one-step route costs one more ore but one fewer machine. Scarcity comes
+    // first absolutely, so the extra machine is taken and the ore is not spent.
+    const dataset: Dataset = {
+      source: TEST_SOURCE,
+      parts: [
+        { id: 'OreA', name: 'Ore A', state: 'solid' },
+        { id: 'Half', name: 'Half', state: 'solid' },
+        { id: 'Widget', name: 'Widget', state: 'solid' },
+      ],
+      recipes: [
+        {
+          id: 'OneStep',
+          name: 'One step',
+          building: 'Assembler',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 11 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+        {
+          id: 'TwoStepA',
+          name: 'Two step, first',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 10 }],
+          outputs: [{ part: 'Half', rate: 10 }],
+        },
+        {
+          id: 'TwoStepB',
+          name: 'Two step, second',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'Half', rate: 10 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+      ],
+      resources: [resource('OreA', 1, 60)],
+    };
+
+    const result = plan(dataset, [{ part: 'Widget', rate: 10 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe).sort()).toEqual([
+      'TwoStepA',
+      'TwoStepB',
+    ]);
+    expect(result.plan.resourceDemand).toEqual({ OreA: 10 });
+  });
+
+  it('returns the same Plan every time, since ties are no longer arbitrary', () => {
+    const once = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
+    const twice = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
+
+    expect(once).toEqual(twice);
+  });
+
+  it('counts extractors alongside factory machines, under their own building', () => {
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate: 60 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // 60 ore a minute from a 60/min extractor is one machine, beside the two Smelters.
+    expect(result.plan.machinesByBuilding).toEqual({ Smelter: 2, Extractor: 1 });
+  });
+
+  it('needs fewer extractors at a higher Extractor Tier', () => {
+    const dataset: Dataset = {
+      ...ingotDataset(),
+      resources: [
+        {
+          part: 'IronOre',
+          unbounded: false,
+          availableByTier: [9210, 18420, 36840],
+          extractors: [
+            { building: 'Miner Mk.1', rate: 60 },
+            { building: 'Miner Mk.2', rate: 120 },
+            { building: 'Miner Mk.3', rate: 240 },
+          ],
+        },
+      ],
+    };
+    const at = (tier: ExtractorTier) =>
+      plan(dataset, [{ part: 'IronIngot', rate: 240 }], undefined, tier);
+
+    const [one, three] = [at(1), at(3)];
+    expect(one.status).toBe('optimal');
+    expect(three.status).toBe('optimal');
+    if (one.status !== 'optimal' || three.status !== 'optimal') return;
+
+    // The same 240 ore a minute: four Mk.1 Miners, or one Mk.3.
+    expect(one.plan.machinesByBuilding['Miner Mk.1']).toBe(4);
+    expect(three.plan.machinesByBuilding['Miner Mk.3']).toBe(1);
+    expect(one.plan.resourceDemand).toEqual(three.plan.resourceDemand);
+  });
+
+  it('defaults to Mk.3 when the Request does not say', () => {
+    const dataset: Dataset = {
+      ...ingotDataset(),
+      resources: [
+        {
+          part: 'IronOre',
+          unbounded: false,
+          availableByTier: [9210, 18420, 36840],
+          extractors: [
+            { building: 'Miner Mk.1', rate: 60 },
+            { building: 'Miner Mk.2', rate: 120 },
+            { building: 'Miner Mk.3', rate: 240 },
+          ],
+        },
+      ],
+    };
+
+    const result = solve(dataset, { targets: [{ part: 'IronIngot', rate: 240 }] });
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.machinesByBuilding['Miner Mk.3']).toBe(1);
   });
 
   it('keeps float dust out of a machine count summed across Recipes', () => {
@@ -410,7 +617,7 @@ describe('solve', () => {
       resources: [resource('OreA', 1, 60)],
     };
 
-    const result = solve(dataset, [
+    const result = plan(dataset, [
       { part: 'WidgetA', rate: 10 },
       { part: 'WidgetB', rate: 20 },
     ]);
@@ -418,11 +625,11 @@ describe('solve', () => {
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    expect(result.plan.machinesByBuilding).toEqual({ Constructor: 0.3 });
+    expect(factory(result.plan)).toEqual({ Constructor: 0.3 });
   });
 
   it('returns a Plan for a Target far beyond what the map could supply', () => {
-    const result = solve(ingotDataset(), [{ part: 'IronIngot', rate: 1_000_000 }]);
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate: 1_000_000 }]);
 
     // Scarcity Cost prices Resources; it does not cap them. "Here is what it would
     // take" beats refusing to answer.
@@ -432,6 +639,6 @@ describe('solve', () => {
     // A solver works to a tolerance, so 1e6/30 is asserted as a closeness rather
     // than as exact float equality.
     expect(result.plan.resourceDemand['IronOre']).toBeCloseTo(1_000_000, 6);
-    expect(result.plan.machinesByBuilding['Smelter']).toBeCloseTo(1_000_000 / 30, 6);
+    expect(factory(result.plan)['Smelter']).toBeCloseTo(1_000_000 / 30, 6);
   });
 });
