@@ -513,6 +513,83 @@ describe('solve', () => {
     expect(result.plan.resourceDemand).toEqual({ OreA: 10 });
   });
 
+  it('admits no ghost of a rejected Recipe at real Resource Weights', () => {
+    // The same trade as above, but priced off the map's actual iron availability
+    // rather than a weight of one. Phase two's ceiling has to hold at that scale
+    // too: the sliver it can buy is its slack divided by the Resource Weight, so
+    // a weight near 1e-5 magnifies any fixed slack a hundred thousand times.
+    const dataset: Dataset = {
+      source: TEST_SOURCE,
+      parts: [
+        { id: 'OreA', name: 'Ore A', state: 'solid' },
+        { id: 'Half', name: 'Half', state: 'solid' },
+        { id: 'Widget', name: 'Widget', state: 'solid' },
+      ],
+      recipes: [
+        {
+          id: 'OneStep',
+          name: 'One step',
+          building: 'Assembler',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 11 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+        {
+          id: 'TwoStepA',
+          name: 'Two step, first',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'OreA', rate: 10 }],
+          outputs: [{ part: 'Half', rate: 10 }],
+        },
+        {
+          id: 'TwoStepB',
+          name: 'Two step, second',
+          building: 'Constructor',
+          alternate: false,
+          inputs: [{ part: 'Half', rate: 10 }],
+          outputs: [{ part: 'Widget', rate: 10 }],
+        },
+      ],
+      resources: [
+        {
+          part: 'OreA',
+          unbounded: false,
+          availableByTier: [9210, 18420, 36840],
+          extractors: [
+            { building: 'Miner Mk.1', rate: 60 },
+            { building: 'Miner Mk.2', rate: 120 },
+            { building: 'Miner Mk.3', rate: 240 },
+          ],
+        },
+      ],
+    };
+
+    const result = plan(dataset, [{ part: 'Widget', rate: 10 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe).sort()).toEqual([
+      'TwoStepA',
+      'TwoStepB',
+    ]);
+    expect(result.plan.machinesByBuilding['Constructor']).toBe(2);
+    expect(result.plan.resourceDemand).toEqual({ OreA: 10 });
+  });
+
+  it.each([0, 4, Number.NaN])(
+    'rejects an Extractor Tier of %s rather than throwing out of solve',
+    (tier) => {
+      const result = solve(ingotDataset(), {
+        targets: [{ part: 'IronIngot', rate: 60 }],
+        extractorTier: tier as ExtractorTier,
+      });
+
+      expect(result.status).toBe('infeasible');
+    },
+  );
+
   it('returns the same Plan every time, since ties are no longer arbitrary', () => {
     const once = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
     const twice = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);

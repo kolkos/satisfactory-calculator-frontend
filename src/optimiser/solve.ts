@@ -23,6 +23,7 @@ export interface PlanRequest {
 }
 
 const DEFAULT_TIER: ExtractorTier = 3;
+const TIERS: readonly ExtractorTier[] = [1, 2, 3];
 
 /**
  * The Alternates a particular player has unlocked, by Recipe id. Purely a filter
@@ -73,18 +74,18 @@ const RECIPE = 'recipe:';
 const EXTRACT = 'extract:';
 
 /**
- * How far phase two may let Scarcity Cost drift above the optimum phase one found.
- * Some slack is needed because re-solving cannot reproduce a float exactly, and a
- * bound of exactly the optimum would be spuriously infeasible.
+ * How far phase two may let Scarcity Cost drift above phase one's optimum, relative
+ * to that optimum. It only has to absorb the difference between summing the same
+ * numbers in two different orders, because the ceiling is computed from phase one's
+ * own solution rather than from the figure the solver reports.
  *
- * It is the solver's own precision, and deliberately absolute rather than relative
- * to the optimum. Any slack lets phase two buy machines with a sliver of a Recipe
- * phase one rejected; keeping it no larger than the precision phase one was
- * computed to means the sliver is smaller than the solver reports, so it never
- * reaches the Plan. A relative tolerance of 1e-6 was tried first and did reach it,
- * putting a 5e-8-machine ghost of the losing Recipe into the answer.
+ * Keeping it this small matters more than it looks. Whatever slack is allowed buys
+ * phase two a sliver of a Recipe phase one rejected, and the size of that sliver is
+ * the slack divided by a Resource Weight — so at a realistic weight near 1e-5, a
+ * fixed slack is magnified a hundred thousand times. An absolute 1e-8 was tried
+ * first and put a visible 0.0002-machine ghost of the losing Recipe into the answer.
  */
-const SCARCITY_SLACK = 1e-8;
+const SCARCITY_SLACK = 1e-12;
 
 /**
  * Below this a solver value is noise rather than a plan. Variables here are either
@@ -102,9 +103,10 @@ const NEGLIGIBLE = 1e-6;
 const PLAN_PRECISION = 1e6;
 
 /**
- * Rounds a machine count accumulated across Recipes. Individual variables arrive
- * already rounded by the solver, but adding two rounded values makes fresh dust —
- * 0.1 + 0.2 is 0.30000000000000004 — and the sum is the number a player sees.
+ * Rounds a number on its way into a Plan, whether it came straight from a solver
+ * variable or was accumulated across several. Accumulation is the reason this
+ * cannot be left to the solver's own rounding: adding two rounded values makes
+ * fresh dust, and 0.1 + 0.2 machines reaches a player as 0.30000000000000004.
  */
 function reported(value: number): number {
   return Math.round(value * PLAN_PRECISION) / PLAN_PRECISION;
@@ -116,6 +118,12 @@ export function solve(
   profile: UnlockProfile = NO_UNLOCKS,
 ): SolveResult {
   const tier = request.extractorTier ?? DEFAULT_TIER;
+  // A Request may have come from a URL or saved JSON, where the type is a promise
+  // rather than a guarantee. An out-of-range tier would index past a Resource's
+  // extractors and throw, breaking the contract that every failure is a status.
+  if (!TIERS.includes(tier)) {
+    return { status: 'infeasible', reason: `Extractor Tier ${String(tier)} is not Mk.1, 2 or 3` };
+  }
 
   // An Alternate the player has not researched is not a Recipe they can build, so
   // it never becomes a variable. Filtering here rather than penalising it in the
@@ -198,14 +206,27 @@ export function solve(
     return { status: 'failed', reason: `solver returned "${cheapest.status}"` };
   }
 
-  // Phase two: the same model with the objective swapped and phase one's result
-  // pinned as a ceiling, so machines are minimised only among the plans that were
-  // already the cheapest. Not a weighted blend of the two — the second objective
-  // may not buy a single machine at the price of any extra Resource.
+  // The ceiling comes from phase one's own solution rather than from the objective
+  // value the solver reports, which is rounded to its precision and so may sit just
+  // below what any real plan can achieve — forcing a slack big enough to be abused.
+  // Priced from the returned variables, phase one's plan is by construction still
+  // feasible in phase two, so the slack need only cover summation order.
+  let optimum = 0;
+  for (const [key, value] of cheapest.variables) {
+    optimum += value * (variables[key]?.[SCARCITY_COST] ?? 0);
+  }
+
+  // Phase two: the same model with the objective swapped and that ceiling applied,
+  // so machines are minimised only among the plans that were already the cheapest.
+  // Not a weighted blend of the two — the second objective may not buy a single
+  // machine at the price of any extra Resource.
   const solution = solveLp({
     ...model,
     objective: MACHINES,
-    constraints: { ...constraints, [SCARCITY_COST]: lessEq(cheapest.result + SCARCITY_SLACK) },
+    constraints: {
+      ...constraints,
+      [SCARCITY_COST]: lessEq(optimum + Math.abs(optimum) * SCARCITY_SLACK),
+    },
   });
   if (solution.status !== 'optimal') {
     return {
@@ -219,9 +240,6 @@ export function solve(
   const machinesByBuilding: Record<string, number> = {};
   const resourceDemand: Record<string, number> = {};
 
-  // Per-variable values arrive already rounded by the solver, so they are taken as
-  // they come. Only the accumulated machine counts are rounded again, because
-  // adding rounded values is what reintroduces dust.
   for (const [key, value] of solution.variables) {
     if (value <= NEGLIGIBLE) continue;
 
