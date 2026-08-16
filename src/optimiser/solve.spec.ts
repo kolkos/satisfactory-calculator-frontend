@@ -291,6 +291,7 @@ describe('solve', () => {
       'machinesByBuilding',
       'recipes',
       'resourceDemand',
+      'surplus',
     ]);
     expect(JSON.stringify(result.plan)).not.toMatch(/scarcity/i);
   });
@@ -589,6 +590,173 @@ describe('solve', () => {
       expect(result.status).toBe('infeasible');
     },
   );
+
+  /** Smelting that also drops Slag, and optionally something that eats the Slag. */
+  function slagDataset(sink?: { consumes: number; produces: number }): Dataset {
+    const base = ingotDataset();
+    return {
+      ...base,
+      parts: [
+        ...base.parts,
+        { id: 'Slag', name: 'Slag', state: 'solid' },
+        ...(sink === undefined ? [] : [{ id: 'Brick', name: 'Brick', state: 'solid' as const }]),
+      ],
+      recipes: [
+        {
+          ...base.recipes[0],
+          outputs: [
+            { part: 'IronIngot', rate: 30 },
+            { part: 'Slag', rate: 10 },
+          ],
+        },
+        ...(sink === undefined
+          ? []
+          : [
+              {
+                id: 'Brick',
+                name: 'Brick',
+                building: 'Constructor',
+                alternate: false,
+                inputs: [{ part: 'Slag', rate: sink.consumes }],
+                outputs: [{ part: 'Brick', rate: sink.produces }],
+              },
+            ]),
+      ],
+    };
+  }
+
+  it('reports a Byproduct nothing consumes as Surplus, at its Rate', () => {
+    const result = plan(slagDataset(), [{ part: 'IronIngot', rate: 30 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // One Smelter makes the 30 ingots wanted and 10 Slag nobody asked for.
+    expect(result.plan.surplus).toEqual({ Slag: 10 });
+  });
+
+  it('reports no Surplus for a Byproduct the chain consumes', () => {
+    const result = plan(slagDataset({ consumes: 10, produces: 5 }), [
+      { part: 'Brick', rate: 5 },
+      { part: 'IronIngot', rate: 30 },
+    ]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // The Brick line eats exactly the 10 Slag the Smelter drops.
+    expect(result.plan.surplus).toEqual({});
+  });
+
+  it('reports no Surplus at all for a chain with no loose ends', () => {
+    const result = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.surplus).toEqual({});
+  });
+
+  it('keeps Surplus apart from Resource Demand and from the Targets', () => {
+    const result = plan(slagDataset(), [{ part: 'IronIngot', rate: 30 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // The Target is met exactly, so it is not Surplus; the ore is Demand, not Surplus.
+    expect(result.plan.surplus).toEqual({ Slag: 10 });
+    expect(result.plan.resourceDemand).toEqual({ IronOre: 30 });
+    expect(result.plan.surplus['IronIngot']).toBeUndefined();
+    expect(result.plan.surplus['IronOre']).toBeUndefined();
+  });
+
+  it('prefers reusing a Byproduct over extracting more', () => {
+    // Slag can be smelted back into ingots. Doing so is free, while more ore is not,
+    // so the optimiser should take the Slag rather than mine for it.
+    const base = ingotDataset();
+    const dataset: Dataset = {
+      ...base,
+      parts: [...base.parts, { id: 'Slag', name: 'Slag', state: 'solid' }],
+      recipes: [
+        {
+          ...base.recipes[0],
+          outputs: [
+            { part: 'IronIngot', rate: 30 },
+            { part: 'Slag', rate: 30 },
+          ],
+        },
+        {
+          id: 'SlagIngot',
+          name: 'Slag Ingot',
+          building: 'Foundry',
+          alternate: false,
+          inputs: [{ part: 'Slag', rate: 30 }],
+          outputs: [{ part: 'IronIngot', rate: 30 }],
+        },
+      ],
+    };
+
+    const result = plan(dataset, [{ part: 'IronIngot', rate: 60 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // 30 ore gives 30 ingots and 30 Slag, and the Slag gives the other 30 ingots.
+    expect(result.plan.resourceDemand).toEqual({ IronOre: 30 });
+    expect(result.plan.surplus).toEqual({});
+  });
+
+  it('solves two mutually dependent Recipes, as a recycling loop demands', () => {
+    // Plastic needs Rubber, Rubber needs Plastic. Neither can be unwound into the
+    // other, so the pair only resolves if cycles are handled rather than avoided.
+    const dataset: Dataset = {
+      source: TEST_SOURCE,
+      parts: [
+        { id: 'Fuel', name: 'Fuel', state: 'fluid' },
+        { id: 'Plastic', name: 'Plastic', state: 'solid' },
+        { id: 'Rubber', name: 'Rubber', state: 'solid' },
+      ],
+      recipes: [
+        {
+          id: 'RecycledPlastic',
+          name: 'Recycled Plastic',
+          building: 'Refinery',
+          alternate: false,
+          inputs: [
+            { part: 'Rubber', rate: 30 },
+            { part: 'Fuel', rate: 30 },
+          ],
+          outputs: [{ part: 'Plastic', rate: 60 }],
+        },
+        {
+          id: 'RecycledRubber',
+          name: 'Recycled Rubber',
+          building: 'Refinery',
+          alternate: false,
+          inputs: [
+            { part: 'Plastic', rate: 30 },
+            { part: 'Fuel', rate: 30 },
+          ],
+          outputs: [{ part: 'Rubber', rate: 60 }],
+        },
+      ],
+      resources: [resource('Fuel', 1, 60)],
+    };
+
+    const result = plan(dataset, [{ part: 'Plastic', rate: 30 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    // Running plastic at p and rubber at r: rubber balances at 60r = 30p, so r = p/2,
+    // and plastic nets 60p - 30r = 45p = 30, giving p = 2/3 and r = 1/3. Fuel is
+    // 30(p + r) = 30.
+    const machines = new Map(result.plan.recipes.map((entry) => [entry.recipe, entry.machines]));
+    expect(machines.get('RecycledPlastic')).toBeCloseTo(2 / 3, 5);
+    expect(machines.get('RecycledRubber')).toBeCloseTo(1 / 3, 5);
+    expect(result.plan.resourceDemand['Fuel']).toBeCloseTo(30, 5);
+    expect(result.plan.surplus).toEqual({});
+  });
 
   it('returns the same Plan every time, since ties are no longer arbitrary', () => {
     const once = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);

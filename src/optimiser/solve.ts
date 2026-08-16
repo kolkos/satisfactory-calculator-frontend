@@ -49,6 +49,14 @@ export interface Plan {
   readonly recipes: readonly PlannedRecipe[];
   readonly machinesByBuilding: Readonly<Record<string, number>>;
   readonly resourceDemand: Readonly<Record<string, number>>;
+  /**
+   * Parts the Plan makes more of than it uses, by Rate. A Byproduct the chain finds
+   * a use for never appears here. The Plan's stated throughput only holds if these
+   * are actually cleared — an unconsumed fluid backs up and stalls the machine
+   * producing it, taking the main product down with it — so this is an open task
+   * rather than a footnote.
+   */
+  readonly surplus: Readonly<Record<string, number>>;
 }
 
 /**
@@ -88,12 +96,15 @@ const EXTRACT = 'extract:';
 const SCARCITY_SLACK = 1e-12;
 
 /**
- * Below this a solver value is noise rather than a plan. Variables here are either
- * machine counts or Rates per minute, and in this game the smallest either
- * meaningfully takes is many orders of magnitude above a millionth — so anything
- * smaller is the residue of the slack above, not a Recipe anyone runs.
+ * Below this a solver value is noise rather than a plan. Variables are either
+ * machine counts or Rates per minute, and neither is meaningful this small: a
+ * ten-thousandth of a machine is nothing, and an item every ten thousand minutes
+ * is one a week. A model with a few hundred Recipes accumulates float residue of
+ * roughly this size, and without the threshold it reaches the Plan — a solve for
+ * Uranium Fuel Rod reported a millionth of a unit of Bauxite as Surplus, which is
+ * not a thing that can happen to a Resource.
  */
-const NEGLIGIBLE = 1e-6;
+const NEGLIGIBLE = 1e-4;
 
 /**
  * What a reported number is rounded to. Coarser than the solver's own precision
@@ -240,8 +251,17 @@ export function solve(
   const machinesByBuilding: Record<string, number> = {};
   const resourceDemand: Record<string, number> = {};
 
+  // What the Plan nets out at for each Part, accumulated from the same coefficients
+  // the model was built from, so it cannot drift from what the solver balanced.
+  const net = new Map<string, number>();
+
   for (const [key, value] of solution.variables) {
     if (value <= NEGLIGIBLE) continue;
+
+    for (const [row, coefficient] of Object.entries(variables[key] ?? {})) {
+      if (row === SCARCITY_COST || row === MACHINES) continue;
+      net.set(row, (net.get(row) ?? 0) + value * coefficient);
+    }
 
     if (key.startsWith(RECIPE)) {
       const recipe = recipesById.get(key.slice(RECIPE.length));
@@ -261,5 +281,14 @@ export function solve(
     }
   }
 
-  return { status: 'optimal', plan: { recipes, machinesByBuilding, resourceDemand } };
+  // Whatever a Part nets beyond what was asked for is left over. Targets are met
+  // exactly, so they do not appear; a Resource extracted to order nets zero, so it
+  // does not either. Only a Byproduct the chain found no use for survives here.
+  const surplus: Record<string, number> = {};
+  for (const [part, produced] of net) {
+    const left = produced - (demanded.get(part) ?? 0);
+    if (left > NEGLIGIBLE) surplus[part] = reported(left);
+  }
+
+  return { status: 'optimal', plan: { recipes, machinesByBuilding, resourceDemand, surplus } };
 }

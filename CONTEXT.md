@@ -59,7 +59,7 @@ Which generation of mining machine a Plan assumes: Miner Mk.1, Mk.2 or Mk.3, at 
 _Avoid_: Miner level, mining tier, miner, extractor level
 
 **Plan**:
-The full answer to a set of Targets: which Recipes to run and at what Rate, how many machines of each building type, the resulting Resource Demand, and any Surplus. Machine counts are fractional, because underclocking makes a fractional machine genuinely buildable: a count of 2.5 means three machines with the last at 50%.
+The full answer to a Plan Request: which Recipes to run and at what Rate, how many machines of each building type, the resulting Resource Demand, and any Surplus. Machine counts are fractional, because underclocking makes a fractional machine genuinely buildable: a count of 2.5 means three machines with the last at 50%.
 _Avoid_: Chain, solution, result, build
 
 **Clock Speed**:
