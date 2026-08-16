@@ -2,10 +2,20 @@ import { ApplicationConfig, provideBrowserGlobalErrorListeners } from '@angular/
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
+import { provideOptimus } from '@openng/optimus-ui/config';
+import Lara from '@openng/optimus-ui-themes/lara';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideRouter(routes)
-  ]
+    provideRouter(routes),
+    provideOptimus({
+      theme: {
+        preset: Lara,
+        options: {
+          darkModeSelector: 'none', // Forces light mode behavior
+        },
+      },
+    }),
+  ],
 };
