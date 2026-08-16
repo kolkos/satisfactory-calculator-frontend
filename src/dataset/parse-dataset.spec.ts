@@ -13,7 +13,16 @@ function validRecipe(): Record<string, unknown> {
 }
 
 function validResource(): Record<string, unknown> {
-  return { part: 'IronOre', weight: 0.000111, extractorRate: 60 };
+  return {
+    part: 'IronOre',
+    unbounded: false,
+    availableByTier: [9210, 18420, 36840],
+    extractors: [
+      { building: 'Miner Mk.1', rate: 60 },
+      { building: 'Miner Mk.2', rate: 120 },
+      { building: 'Miner Mk.3', rate: 240 },
+    ],
+  };
 }
 
 /** A minimal dataset that parses cleanly. Tests override one field at a time. */
@@ -41,7 +50,8 @@ describe('parseDataset', () => {
     expect(dataset.parts).toHaveLength(2);
     expect(dataset.recipes[0].building).toBe('Smelter');
     expect(dataset.recipes[0].inputs[0]).toEqual({ part: 'IronOre', rate: 30 });
-    expect(dataset.resources[0].extractorRate).toBe(60);
+    expect(dataset.resources[0].availableByTier).toEqual([9210, 18420, 36840]);
+    expect(dataset.resources[0].extractors[2]).toEqual({ building: 'Miner Mk.3', rate: 240 });
   });
 
   it('rejects a Part missing its id, naming the field', () => {
@@ -109,30 +119,76 @@ describe('parseDataset', () => {
     );
   });
 
-  it('accepts a Resource Weight of zero, for unbounded Resources', () => {
+  it('accepts an unbounded Resource, which has no availability to state', () => {
     const raw = validRaw();
     raw['parts'] = [
       { id: 'IronOre', name: 'Iron Ore', state: 'solid' },
       { id: 'IronIngot', name: 'Iron Ingot', state: 'solid' },
       { id: 'Water', name: 'Water', state: 'fluid' },
     ];
-    raw['resources'] = [{ part: 'Water', weight: 0, extractorRate: 120 }];
+    raw['resources'] = [
+      {
+        part: 'Water',
+        unbounded: true,
+        availableByTier: [],
+        extractors: [{ building: 'Water Extractor', rate: 120 }],
+      },
+    ];
 
-    expect(parseDataset(raw).resources[0].weight).toBe(0);
+    const resource = parseDataset(raw).resources[0];
+    expect(resource.unbounded).toBe(true);
+    expect(resource.availableByTier).toEqual([]);
+  });
+
+  it('accepts a single-tier Resource, for extractors that have no generations', () => {
+    const raw = validRaw();
+    raw['resources'] = [
+      {
+        part: 'IronOre',
+        unbounded: false,
+        availableByTier: [5040],
+        extractors: [{ building: 'Oil Extractor', rate: 120 }],
+      },
+    ];
+
+    expect(parseDataset(raw).resources[0].availableByTier).toEqual([5040]);
+  });
+
+  it('rejects a bounded Resource with no availability, naming the field', () => {
+    const raw = validRaw();
+    raw['resources'] = [{ ...validResource(), availableByTier: [] }];
+
+    expect(() => parseDataset(raw)).toThrow(/resources\[0]\.availableByTier/);
+  });
+
+  it('rejects a tier count that is neither one nor three, naming the field', () => {
+    const raw = validRaw();
+    raw['resources'] = [
+      {
+        ...validResource(),
+        availableByTier: [1, 2],
+        extractors: [
+          { building: 'A', rate: 1 },
+          { building: 'B', rate: 2 },
+        ],
+      },
+    ];
+
+    expect(() => parseDataset(raw)).toThrow(/resources\[0]\.extractors/);
+  });
+
+  it('rejects availability and extractors of differing length, naming the field', () => {
+    const raw = validRaw();
+    raw['resources'] = [{ ...validResource(), availableByTier: [9210] }];
+
+    expect(() => parseDataset(raw)).toThrow(/resources\[0]\.availableByTier/);
   });
 
   it('rejects a duplicate Resource row for one Part, naming the field', () => {
     const raw = validRaw();
-    raw['resources'] = [validResource(), { ...validResource(), weight: 0.5 }];
+    raw['resources'] = [validResource(), validResource()];
 
     expect(() => parseDataset(raw)).toThrow(/resources\[1]\.part/);
-  });
-
-  it('rejects a Resource with no Resource Weight, naming the field', () => {
-    const raw = validRaw();
-    raw['resources'] = [{ part: 'IronOre', extractorRate: 60 }];
-
-    expect(() => parseDataset(raw)).toThrow(/resources\[0]\.weight/);
   });
 
   it('rejects a Resource referencing an unknown Part, naming the field', () => {

@@ -1,4 +1,13 @@
-import type { Dataset, DatasetSource, Part, PartState, Recipe, Resource } from './parse-dataset';
+import type {
+  Dataset,
+  DatasetSource,
+  Extractor,
+  ExtractorTier,
+  Part,
+  PartState,
+  Recipe,
+  Resource,
+} from './parse-dataset';
 
 /**
  * The shape the Satisfactory wiki publishes its Docs templates in. Every entry is
@@ -41,28 +50,38 @@ export interface WikiDocs {
 /**
  * Nodes of one purity mix extracted by one kind of machine. `normalRate` is that
  * machine's rate on a normal node at 100% clock speed — impure nodes yield half
- * and pure nodes double.
+ * and pure nodes double. `tiered` marks the ones a Miner works, which are the only
+ * ones whose yield rises with the Extractor Tier.
  */
 interface NodeGroup {
   readonly impure: number;
   readonly normal: number;
   readonly pure: number;
   readonly normalRate: number;
+  readonly tiered?: boolean;
 }
+
+/** Miner Mk.1, Mk.2 and Mk.3 relative to Mk.1. */
+const TIER_FACTOR: Readonly<Record<ExtractorTier, number>> = { 1: 1, 2: 2, 3: 4 };
+
+const MINERS: readonly Extractor[] = [
+  { building: 'Miner Mk.1', rate: 60 },
+  { building: 'Miner Mk.2', rate: 120 },
+  { building: 'Miner Mk.3', rate: 240 },
+];
 
 export interface ResourceSpec {
   readonly part: string;
-  /** One extractor's nominal output, as the game's own building description states it. */
-  readonly extractorRate: number;
+  /** One entry, or one per Extractor Tier where the machine has generations. */
+  readonly extractors: readonly Extractor[];
   readonly groups: readonly NodeGroup[];
   /**
-   * The maximum per minute the wiki publishes for this Resource, together with
-   * what it assumes over an unclocked figure — ×2.5 for overclocking alone, ×10
-   * where a Miner Mk.3 is assumed as well. Carried purely so the arithmetic here
-   * can be checked against the source it was transcribed from.
+   * The maximum per minute the wiki publishes for this Resource. It assumes the
+   * best machine at 250% clock, so it equals this Resource's tier-3 availability
+   * times 2.5 — an identity that checks the transcribed node counts and the tier
+   * factors at once, against a figure the wiki derived separately.
    */
   readonly publishedMax: number;
-  readonly publishedMaxFactor: number;
   /**
    * Water alone has no node limit: extractors need no node and any lake will do,
    * so its Resource Weight is zero.
@@ -88,80 +107,70 @@ const WELL_EXTRACTOR = 60;
 const RESOURCE_SPECS: readonly ResourceSpec[] = [
   {
     part: 'Desc_OreIron_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 92100,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 39, normal: 42, pure: 46, normalRate: MINER_MK1 }],
+    groups: [{ impure: 39, normal: 42, pure: 46, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_OreCopper_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 36900,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 13, normal: 29, pure: 13, normalRate: MINER_MK1 }],
+    groups: [{ impure: 13, normal: 29, pure: 13, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_Stone_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 69300,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 15, normal: 50, pure: 29, normalRate: MINER_MK1 }],
+    groups: [{ impure: 15, normal: 50, pure: 29, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_Coal_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 42300,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 15, normal: 31, pure: 16, normalRate: MINER_MK1 }],
+    groups: [{ impure: 15, normal: 31, pure: 16, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_OreGold_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 15000,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 0, normal: 9, pure: 8, normalRate: MINER_MK1 }],
+    groups: [{ impure: 0, normal: 9, pure: 8, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_RawQuartz_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 13500,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 3, normal: 7, pure: 7, normalRate: MINER_MK1 }],
+    groups: [{ impure: 3, normal: 7, pure: 7, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_Sulfur_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 10800,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 6, normal: 5, pure: 5, normalRate: MINER_MK1 }],
+    groups: [{ impure: 6, normal: 5, pure: 5, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_OreBauxite_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 12300,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 5, normal: 6, pure: 6, normalRate: MINER_MK1 }],
+    groups: [{ impure: 5, normal: 6, pure: 6, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_OreUranium_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 2100,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 3, normal: 2, pure: 0, normalRate: MINER_MK1 }],
+    groups: [{ impure: 3, normal: 2, pure: 0, normalRate: MINER_MK1, tiered: true }],
   },
   {
     part: 'Desc_SAM_C',
-    extractorRate: MINER_MK1,
+    extractors: MINERS,
     publishedMax: 10200,
-    publishedMaxFactor: 10,
-    groups: [{ impure: 10, normal: 6, pure: 3, normalRate: MINER_MK1 }],
+    groups: [{ impure: 10, normal: 6, pure: 3, normalRate: MINER_MK1, tiered: true }],
   },
-  // Crude Oil comes from both ordinary nodes and resource wells.
+  // Crude Oil comes from both ordinary nodes and resource wells. The Oil Extractor
+  // is quoted as the nominal machine, since it works the larger share.
   {
     part: 'Desc_LiquidOil_C',
-    extractorRate: OIL_EXTRACTOR,
+    extractors: [{ building: 'Oil Extractor', rate: OIL_EXTRACTOR }],
     publishedMax: 12600,
-    publishedMaxFactor: 2.5,
     groups: [
       { impure: 10, normal: 12, pure: 8, normalRate: OIL_EXTRACTOR },
       { impure: 8, normal: 6, pure: 4, normalRate: WELL_EXTRACTOR },
@@ -169,27 +178,25 @@ const RESOURCE_SPECS: readonly ResourceSpec[] = [
   },
   {
     part: 'Desc_NitrogenGas_C',
-    extractorRate: WELL_EXTRACTOR,
+    extractors: [{ building: 'Resource Well Extractor', rate: WELL_EXTRACTOR }],
     publishedMax: 12000,
-    publishedMaxFactor: 2.5,
     groups: [{ impure: 2, normal: 7, pure: 36, normalRate: WELL_EXTRACTOR }],
   },
   {
     part: 'Desc_Water_C',
-    extractorRate: WATER_EXTRACTOR,
+    extractors: [{ building: 'Water Extractor', rate: WATER_EXTRACTOR }],
     publishedMax: 13125,
-    publishedMaxFactor: 2.5,
     unbounded: true,
     groups: [{ impure: 7, normal: 12, pure: 36, normalRate: WELL_EXTRACTOR }],
   },
 ];
 
-/** What the whole map yields per minute, at 100% clock speed and no miner upgrades. */
-export function totalAvailable(spec: ResourceSpec): number {
-  return spec.groups.reduce(
-    (total, g) => total + (g.impure * 0.5 + g.normal + g.pure * 2) * g.normalRate,
-    0,
-  );
+/** What the whole map yields per minute at a given tier, at 100% clock speed. */
+export function totalAvailable(spec: ResourceSpec, tier: ExtractorTier): number {
+  return spec.groups.reduce((total, g) => {
+    const scale = g.tiered === true ? TIER_FACTOR[tier] : 1;
+    return total + (g.impure * 0.5 + g.normal + g.pure * 2) * g.normalRate * scale;
+  }, 0);
 }
 
 export const RESOURCES: readonly ResourceSpec[] = RESOURCE_SPECS;
@@ -197,8 +204,14 @@ export const RESOURCES: readonly ResourceSpec[] = RESOURCE_SPECS;
 function toResource(spec: ResourceSpec): Resource {
   return {
     part: spec.part,
-    weight: spec.unbounded === true ? 0 : 1 / totalAvailable(spec),
-    extractorRate: spec.extractorRate,
+    unbounded: spec.unbounded === true,
+    // Unbounded Resources state no availability rather than a zero, which would
+    // read as "none of it" instead of "no limit".
+    availableByTier:
+      spec.unbounded === true
+        ? []
+        : spec.extractors.map((_, i) => totalAvailable(spec, (i + 1) as ExtractorTier)),
+    extractors: spec.extractors,
   };
 }
 

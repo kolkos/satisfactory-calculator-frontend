@@ -29,11 +29,58 @@ export interface Recipe {
   readonly outputs: readonly RecipeFlow[];
 }
 
-/** A Part with no Recipe, extracted from the map. */
+/** Which generation of mining machine a Plan assumes. */
+export type ExtractorTier = 1 | 2 | 3;
+
+export const EXTRACTOR_TIERS: readonly ExtractorTier[] = [1, 2, 3];
+
+/** One generation of extractor, and what it yields on a normal node unclocked. */
+export interface Extractor {
+  readonly building: string;
+  readonly rate: number;
+}
+
+/**
+ * A Part with no Recipe, extracted from the map.
+ *
+ * Carries what the map holds rather than a scarcity price, because the price
+ * depends on the Extractor Tier a Plan was asked about — see ADR-0006. Mined
+ * Resources have three entries; a single entry means the tier does not apply,
+ * which is true of every fluid extractor.
+ */
 export interface Resource {
   readonly part: string;
-  readonly weight: number;
-  readonly extractorRate: number;
+  readonly unbounded: boolean;
+  /** Map yield per minute at each Extractor Tier. Empty when unbounded. */
+  readonly availableByTier: readonly number[];
+  readonly extractors: readonly Extractor[];
+}
+
+function tierIndex(resource: Resource, tier: ExtractorTier): number {
+  // A Resource whose extractor has no generations answers every tier the same.
+  return resource.extractors.length === 1 ? 0 : tier - 1;
+}
+
+/**
+ * The scarcity price of one unit per minute of this Resource at a given tier:
+ * one over what the whole map yields. Zero where the map imposes no limit.
+ */
+export function resourceWeight(resource: Resource, tier: ExtractorTier): number {
+  if (resource.unbounded) return 0;
+  const available = resource.availableByTier[tierIndex(resource, tier)];
+  if (available === undefined) {
+    throw new Error(`no availability for ${resource.part} at tier ${tier}`);
+  }
+  return 1 / available;
+}
+
+/** The extractor a Plan at this tier would build, and its nominal rate. */
+export function extractorFor(resource: Resource, tier: ExtractorTier): Extractor {
+  const extractor = resource.extractors[tierIndex(resource, tier)];
+  if (extractor === undefined) {
+    throw new Error(`no extractor for ${resource.part} at tier ${tier}`);
+  }
+  return extractor;
 }
 
 /**
@@ -165,16 +212,45 @@ function parseRecipe(value: unknown, path: string, knownParts: ReadonlySet<strin
   };
 }
 
-function parseResource(value: unknown, path: string, knownParts: ReadonlySet<string>): Resource {
+function parseExtractor(value: unknown, path: string): Extractor {
   const raw = asRecord(value, path);
   return {
-    part: asKnownPart(raw['part'], `${path}.part`, knownParts),
-    // Zero is deliberate, not an oversight: unbounded Resources such as water have
-    // no node limit, so their Resource Weight really is zero. Nothing yet stops the
-    // optimiser exploiting that — see the note on `unbounded` in build-dataset.ts.
-    weight: asNumber(raw['weight'], `${path}.weight`, 'non-negative'),
-    extractorRate: asNumber(raw['extractorRate'], `${path}.extractorRate`, 'positive'),
+    building: asString(raw['building'], `${path}.building`),
+    rate: asNumber(raw['rate'], `${path}.rate`, 'positive'),
   };
+}
+
+function parseResource(value: unknown, path: string, knownParts: ReadonlySet<string>): Resource {
+  const raw = asRecord(value, path);
+  const part = asKnownPart(raw['part'], `${path}.part`, knownParts);
+  const unbounded = asBoolean(raw['unbounded'], `${path}.unbounded`);
+
+  const extractors = asArray(raw['extractors'], `${path}.extractors`).map((extractor, i) =>
+    parseExtractor(extractor, `${path}.extractors[${i}]`),
+  );
+  // One generation or three: anything else means the source grew a tier we do not
+  // model, and guessing which entry to price a Plan from would be worse than failing.
+  if (extractors.length !== 1 && extractors.length !== 3) {
+    throw new DatasetValidationError(
+      `${path}.extractors`,
+      `expected 1 or 3 entries, found ${extractors.length}`,
+    );
+  }
+
+  const availableByTier = asArray(raw['availableByTier'], `${path}.availableByTier`).map(
+    (available, i) => asNumber(available, `${path}.availableByTier[${i}]`, 'positive'),
+  );
+  // Unbounded Resources state no availability at all, rather than a zero that
+  // would read as "none available" instead of "no limit".
+  const expected = unbounded ? 0 : extractors.length;
+  if (availableByTier.length !== expected) {
+    throw new DatasetValidationError(
+      `${path}.availableByTier`,
+      `expected ${expected} entries for ${unbounded ? 'an unbounded' : 'this'} Resource, found ${availableByTier.length}`,
+    );
+  }
+
+  return { part, unbounded, availableByTier, extractors };
 }
 
 function parseSource(value: unknown, path: string): DatasetSource {

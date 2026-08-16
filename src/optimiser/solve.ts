@@ -1,5 +1,12 @@
 import { greaterEq, solve as solveLp } from 'yalps';
-import type { Dataset } from '../dataset/parse-dataset';
+import { resourceWeight, type Dataset, type ExtractorTier } from '../dataset/parse-dataset';
+
+/**
+ * The Extractor Tier every Plan is currently priced at. ADR-0006 makes this part
+ * of the Plan Request; until the optimiser takes a Request, Mk.1 keeps the
+ * answers identical to what they were before availability became tier-aware.
+ */
+const PRICED_AT_TIER: ExtractorTier = 1;
 
 /** A Part together with the Rate the player wants of it. */
 export interface Target {
@@ -123,7 +130,7 @@ export function solve(
   for (const resource of dataset.resources) {
     variables[`${SUPPLY}${resource.part}`] = {
       [resource.part]: 1,
-      [SCARCITY_COST]: resource.weight,
+      [SCARCITY_COST]: resourceWeight(resource, PRICED_AT_TIER),
     };
   }
 

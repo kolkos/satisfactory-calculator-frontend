@@ -8,40 +8,48 @@ function docs(partial: Partial<WikiDocs>): WikiDocs {
 
 const STAMP = { url: 'test', fetchedAt: '2026-08-11T00:00:00Z', revisions: {} };
 
+/** What the wiki's published maximum assumes over an unclocked figure. */
+const MAX_OVERCLOCK = 2.5;
+
 describe('resource node table', () => {
   // Not a restatement of the arithmetic: publishedMax is transcribed from the
   // wiki's own "maximum per min" column, which was produced independently of the
-  // node counts beside it. A typo in either would break the identity.
+  // node counts beside it. Because that column assumes the best machine at 250%,
+  // the identity pins the tier factors as well as the counts.
   it.each(RESOURCES.map((spec) => [spec.part, spec] as const))(
-    'reproduces the published maximum for %s',
+    'reproduces the published maximum for %s from its tier-3 availability',
     (_part, spec) => {
-      expect(totalAvailable(spec) * spec.publishedMaxFactor).toBeCloseTo(spec.publishedMax, 6);
+      expect(totalAvailable(spec, 3) * MAX_OVERCLOCK).toBeCloseTo(spec.publishedMax, 6);
     },
   );
+
+  it.each(
+    RESOURCES.filter((spec) => spec.extractors.length === 3).map((s) => [s.part, s] as const),
+  )('quadruples %s between Mk.1 and Mk.3, and doubles it at Mk.2', (_part, spec) => {
+    expect(totalAvailable(spec, 2)).toBeCloseTo(totalAvailable(spec, 1) * 2, 6);
+    expect(totalAvailable(spec, 3)).toBeCloseTo(totalAvailable(spec, 1) * 4, 6);
+  });
+
+  it('leaves fluid availability untouched by the Extractor Tier', () => {
+    for (const spec of RESOURCES.filter((candidate) => candidate.extractors.length === 1)) {
+      expect(totalAvailable(spec, 3)).toBe(totalAvailable(spec, 1));
+    }
+  });
 
   it('covers every Resource the game has', () => {
     expect(RESOURCES).toHaveLength(13);
   });
 
-  it('gives water a Resource Weight of zero and everything else a positive one', () => {
-    const weights = new Map(
-      RESOURCES.map((spec) => [spec.part, spec.unbounded === true ? 0 : 1 / totalAvailable(spec)]),
-    );
-
-    expect(weights.get('Desc_Water_C')).toBe(0);
-    for (const [part, weight] of weights) {
-      if (part !== 'Desc_Water_C') expect(weight).toBeGreaterThan(0);
-    }
-  });
-
   it('prices uranium far above iron, since scarcity is the point', () => {
-    const weight = (part: string) => {
+    const total = (part: string, tier: 1 | 2 | 3) => {
       const spec = RESOURCES.find((candidate) => candidate.part === part);
       if (spec === undefined) throw new Error(`no spec for ${part}`);
-      return 1 / totalAvailable(spec);
+      return totalAvailable(spec, tier);
     };
 
-    expect(weight('Desc_OreUranium_C')).toBeGreaterThan(weight('Desc_OreIron_C') * 40);
+    expect(1 / total('Desc_OreUranium_C', 1)).toBeGreaterThan(
+      (1 / total('Desc_OreIron_C', 1)) * 40,
+    );
   });
 });
 

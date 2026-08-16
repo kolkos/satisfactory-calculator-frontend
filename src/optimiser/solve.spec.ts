@@ -4,6 +4,16 @@ import { solve } from './solve';
 
 const TEST_SOURCE = { url: 'test', fetchedAt: '2026-01-01T00:00:00Z', revisions: {} };
 
+/** A Resource priced at a given weight: availability is one over it. */
+function resource(part: string, weight: number, rate: number) {
+  return {
+    part,
+    unbounded: weight === 0,
+    availableByTier: weight === 0 ? [] : [1 / weight],
+    extractors: [{ building: 'Extractor', rate }],
+  };
+}
+
 /**
  * Iron Ore is smelted into Iron Ingot one for one, 30/min per Smelter.
  * Small enough that every expected number below can be worked out on paper.
@@ -25,7 +35,7 @@ function ingotDataset(): Dataset {
         outputs: [{ part: 'IronIngot', rate: 30 }],
       },
     ],
-    resources: [{ part: 'IronOre', weight: 0.0001, extractorRate: 60 }],
+    resources: [resource('IronOre', 0.0001, 60)],
   };
 }
 
@@ -80,10 +90,7 @@ function choiceDataset(weights: { oreA: number; oreB: number }): Dataset {
         outputs: [{ part: 'Widget', rate: 10 }],
       },
     ],
-    resources: [
-      { part: 'OreA', weight: weights.oreA, extractorRate: 60 },
-      { part: 'OreB', weight: weights.oreB, extractorRate: 60 },
-    ],
+    resources: [resource('OreA', weights.oreA, 60), resource('OreB', weights.oreB, 60)],
   };
 }
 
@@ -117,7 +124,7 @@ function alternateDataset(): Dataset {
         outputs: [{ part: 'Widget', rate: 10 }],
       },
     ],
-    resources: [{ part: 'OreA', weight: 1, extractorRate: 60 }],
+    resources: [resource('OreA', 1, 60)],
   };
 }
 
@@ -360,10 +367,7 @@ describe('solve', () => {
           outputs: [{ part: 'Widget', rate: 10 }],
         },
       ],
-      resources: [
-        { part: 'OreA', weight: 1, extractorRate: 60 },
-        { part: 'Water', weight: 0, extractorRate: 120 },
-      ],
+      resources: [resource('OreA', 1, 60), resource('Water', 0, 120)],
     };
 
     const result = solve(dataset, [{ part: 'Widget', rate: 10 }], new Set(['Widget_Wet']));
@@ -403,7 +407,7 @@ describe('solve', () => {
           outputs: [{ part: 'WidgetB', rate: 100 }],
         },
       ],
-      resources: [{ part: 'OreA', weight: 1, extractorRate: 60 }],
+      resources: [resource('OreA', 1, 60)],
     };
 
     const result = solve(dataset, [

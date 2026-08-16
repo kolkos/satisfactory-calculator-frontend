@@ -1,7 +1,7 @@
 {
  "source": {
   "url": "https://satisfactory.wiki.gg/api.php",
-  "fetchedAt": "2026-08-11T06:40:14.577Z",
+  "fetchedAt": "2026-08-16T09:10:55.970Z",
   "revisions": {
    "Template:DocsItems.json": 62019,
    "Template:DocsRecipes.json": 62572,
@@ -7501,68 +7501,270 @@
  "resources": [
   {
    "part": "Desc_OreIron_C",
-   "weight": 0.00010857763300760044,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    9210,
+    18420,
+    36840
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_OreCopper_C",
-   "weight": 0.00027100271002710027,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    3690,
+    7380,
+    14760
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_Stone_C",
-   "weight": 0.0001443001443001443,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    6930,
+    13860,
+    27720
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_Coal_C",
-   "weight": 0.00023640661938534278,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    4230,
+    8460,
+    16920
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_OreGold_C",
-   "weight": 0.0006666666666666666,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    1500,
+    3000,
+    6000
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_RawQuartz_C",
-   "weight": 0.0007407407407407407,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    1350,
+    2700,
+    5400
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_Sulfur_C",
-   "weight": 0.000925925925925926,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    1080,
+    2160,
+    4320
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_OreBauxite_C",
-   "weight": 0.0008130081300813008,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    1230,
+    2460,
+    4920
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_OreUranium_C",
-   "weight": 0.004761904761904762,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    210,
+    420,
+    840
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_SAM_C",
-   "weight": 0.000980392156862745,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    1020,
+    2040,
+    4080
+   ],
+   "extractors": [
+    {
+     "building": "Miner Mk.1",
+     "rate": 60
+    },
+    {
+     "building": "Miner Mk.2",
+     "rate": 120
+    },
+    {
+     "building": "Miner Mk.3",
+     "rate": 240
+    }
+   ]
   },
   {
    "part": "Desc_LiquidOil_C",
-   "weight": 0.0001984126984126984,
-   "extractorRate": 120
+   "unbounded": false,
+   "availableByTier": [
+    5040
+   ],
+   "extractors": [
+    {
+     "building": "Oil Extractor",
+     "rate": 120
+    }
+   ]
   },
   {
    "part": "Desc_NitrogenGas_C",
-   "weight": 0.00020833333333333335,
-   "extractorRate": 60
+   "unbounded": false,
+   "availableByTier": [
+    4800
+   ],
+   "extractors": [
+    {
+     "building": "Resource Well Extractor",
+     "rate": 60
+    }
+   ]
   },
   {
    "part": "Desc_Water_C",
-   "weight": 0,
-   "extractorRate": 120
+   "unbounded": true,
+   "availableByTier": [],
+   "extractors": [
+    {
+     "building": "Water Extractor",
+     "rate": 120
+    }
+   ]
   }
  ]
 }
