@@ -14,10 +14,7 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render title', async () => {
-    const fixture = TestBed.createComponent(App);
-    await fixture.whenStable();
-    const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Hello, satisfactory-calculator-frontend');
-  });
+  // The scaffold's "should render title" test went with the scaffold's markup. The
+  // shell renders nothing of its own now, so there is nothing here worth asserting
+  // until #11 puts a Plan on the page.
 });
