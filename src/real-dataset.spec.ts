@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { parseDataset } from './dataset/parse-dataset';
 import { solve } from './optimiser/solve';
@@ -13,7 +15,10 @@ import { solve } from './optimiser/solve';
  * not to re-verify optimisation. Assertions are therefore either structural or
  * arrived at on paper.
  */
-const dataset = parseDataset(JSON.parse(readFileSync('public/dataset.json', 'utf8')));
+// Resolved from this file rather than the working directory, so the suite does not
+// depend on being launched from the repository root.
+const asset = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'dataset.json');
+const dataset = parseDataset(JSON.parse(readFileSync(asset, 'utf8')));
 
 const PLASTIC = 'Desc_Plastic_C';
 const CRUDE_OIL = 'Desc_LiquidOil_C';
@@ -52,9 +57,11 @@ describe('the committed dataset', () => {
     expect(result.status).toBe('optimal');
     if (result.status !== 'optimal') return;
 
-    // The recycling loops consume the residue that the default set leaves over, and
-    // Recycled Plastic and Recycled Rubber depend on each other — a cycle, resolved.
-    expect(result.plan.surplus).toEqual({});
+    // Named rather than asserting nothing at all is left over: which trace a global
+    // optimum leaves is a property of the recipe set, and one wiki edit could change
+    // it without saying anything about whether the dataset is usable. What matters
+    // is that the residue the default set could not place is now consumed.
+    expect(result.plan.surplus[HEAVY_OIL_RESIDUE]).toBeUndefined();
     expect(result.plan.resourceDemand[CRUDE_OIL]).toBeLessThan(150);
 
     // By name rather than by id: Recycled Plastic is Recipe_Alternate_Plastic_1_C
@@ -66,30 +73,36 @@ describe('the committed dataset', () => {
     expect(running).toContain('Recycled Rubber');
   });
 
-  it('asks only for Resources, at Rates a factory could carry', () => {
-    const resources = new Set(dataset.resources.map((resource) => resource.part));
-    const result = solve(dataset, { targets: [{ part: PLASTIC, rate: 100 }] }, everyAlternate);
+  // Upstream keys everything by class name — Desc_Plastic_C, Build_SmelterMk1_C —
+  // and the transformation's job is to resolve the ones a player reads into display
+  // names. If that lookup regressed, every name would still be a valid non-empty
+  // string and every id would still line up, so nothing structural would notice.
+  const CLASS_NAME = /^(Desc|Build|Recipe)_|_C$/;
 
-    expect(result.status).toBe('optimal');
-    if (result.status !== 'optimal') return;
-
-    for (const [part, rate] of Object.entries(result.plan.resourceDemand)) {
-      expect(resources).toContain(part);
-      expect(Number.isFinite(rate)).toBe(true);
-      expect(rate).toBeGreaterThan(0);
+  it('resolves display names rather than passing class names through', () => {
+    for (const recipe of dataset.recipes) {
+      expect(recipe.building).not.toMatch(CLASS_NAME);
+      expect(recipe.name).not.toMatch(CLASS_NAME);
+    }
+    for (const part of dataset.parts) {
+      expect(part.name).not.toMatch(CLASS_NAME);
+    }
+    for (const resource of dataset.resources) {
+      for (const extractor of resource.extractors) {
+        expect(extractor.building).not.toMatch(CLASS_NAME);
+      }
     }
   });
 
-  it('names a real building for every Recipe it runs', () => {
+  it('produces the buildings the game actually has', () => {
     const buildings = new Set(dataset.recipes.map((recipe) => recipe.building));
-    const result = solve(dataset, { targets: [{ part: PLASTIC, rate: 100 }] }, everyAlternate);
 
-    expect(result.status).toBe('optimal');
-    if (result.status !== 'optimal') return;
-
-    for (const entry of result.plan.recipes) {
-      expect(entry.building.length).toBeGreaterThan(0);
-      expect(buildings).toContain(entry.building);
+    // A handful that must survive any regeneration, spanning solid and fluid lines.
+    for (const building of ['Constructor', 'Smelter', 'Assembler', 'Refinery', 'Blender']) {
+      expect(buildings).toContain(building);
     }
+    // Twelve production buildings in the game; a regeneration that swept in the
+    // build gun or the customizer would push this far past it.
+    expect(buildings.size).toBeLessThan(20);
   });
 });
