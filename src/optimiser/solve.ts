@@ -96,15 +96,18 @@ const EXTRACT = 'extract:';
 const SCARCITY_SLACK = 1e-12;
 
 /**
- * Below this a solver value is noise rather than a plan. Variables are either
- * machine counts or Rates per minute, and neither is meaningful this small: a
- * ten-thousandth of a machine is nothing, and an item every ten thousand minutes
- * is one a week. A model with a few hundred Recipes accumulates float residue of
- * roughly this size, and without the threshold it reaches the Plan — a solve for
- * Uranium Fuel Rod reported a millionth of a unit of Bauxite as Surplus, which is
- * not a thing that can happen to a Resource.
+ * How small a solver value has to be, relative to the largest in the same solution,
+ * before it counts as noise rather than as part of the plan.
+ *
+ * Relative rather than fixed, because the residue a simplex leaves behind scales
+ * with the numbers it is working on: a few hundred Recipes at rates in the hundreds
+ * leave dust around a millionth, which a fixed floor low enough for a small plan
+ * would report. A solve for Uranium Fuel Rod offered a millionth of a unit of
+ * Bauxite as Surplus, which cannot happen to a Resource. Raising the floor instead
+ * was tried and is worse: at a Target of a thousandth of an ingot a minute, the one
+ * Smelter that makes it runs at 3e-5 machines and was filtered out of its own Plan.
  */
-const NEGLIGIBLE = 1e-4;
+const NEGLIGIBLE_FRACTION = 1e-8;
 
 /**
  * What a reported number is rounded to. Coarser than the solver's own precision
@@ -253,15 +256,25 @@ export function solve(
 
   // What the Plan nets out at for each Part, accumulated from the same coefficients
   // the model was built from, so it cannot drift from what the solver balanced.
+  // Every variable counts, including ones too small to print: dropping a consumer
+  // while keeping its producer would invent a leftover that is not there.
   const net = new Map<string, number>();
-
   for (const [key, value] of solution.variables) {
-    if (value <= NEGLIGIBLE) continue;
-
     for (const [row, coefficient] of Object.entries(variables[key] ?? {})) {
       if (row === SCARCITY_COST || row === MACHINES) continue;
       net.set(row, (net.get(row) ?? 0) + value * coefficient);
     }
+  }
+
+  // Noise is judged against the size of this particular plan, so a plan whose
+  // numbers are all small is not filtered away into nothing.
+  let negligible = 0;
+  for (const [, value] of solution.variables) {
+    negligible = Math.max(negligible, value * NEGLIGIBLE_FRACTION);
+  }
+
+  for (const [key, value] of solution.variables) {
+    if (value <= negligible) continue;
 
     if (key.startsWith(RECIPE)) {
       const recipe = recipesById.get(key.slice(RECIPE.length));
@@ -287,7 +300,11 @@ export function solve(
   const surplus: Record<string, number> = {};
   for (const [part, produced] of net) {
     const left = produced - (demanded.get(part) ?? 0);
-    if (left > NEGLIGIBLE) surplus[part] = reported(left);
+    if (left <= negligible) continue;
+    // Netting sums a product per Recipe, so it carries error of its own beyond what
+    // the relative floor catches. A leftover that rounds away is not one.
+    const rate = reported(left);
+    if (rate > 0) surplus[part] = rate;
   }
 
   return { status: 'optimal', plan: { recipes, machinesByBuilding, resourceDemand, surplus } };

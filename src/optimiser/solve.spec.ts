@@ -758,6 +758,33 @@ describe('solve', () => {
     expect(result.plan.surplus).toEqual({});
   });
 
+  it('keeps the Recipe that makes the Target however small the Target is', () => {
+    // A thousandth of an ingot a minute is a third of a ten-thousandth of a Smelter.
+    // Noise has to be judged against the size of the plan it sits in, or a plan this
+    // small is filtered away into one that mines ore and smelts nothing.
+    const result = plan(ingotDataset(), [{ part: 'IronIngot', rate: 0.001 }]);
+
+    expect(result.status).toBe('optimal');
+    if (result.status !== 'optimal') return;
+
+    expect(result.plan.recipes.map((entry) => entry.recipe)).toEqual(['IronIngot']);
+    expect(result.plan.surplus).toEqual({});
+  });
+
+  it('reports no Surplus for a Part the chain consumes at any scale', () => {
+    // Surplus must be netted from every variable, not only the ones large enough to
+    // print: dropping a consumer while keeping its producer invents a leftover.
+    for (const rate of [0.001, 0.05, 30]) {
+      const result = plan(ingotDataset(), [{ part: 'IronIngot', rate }]);
+
+      expect(result.status).toBe('optimal');
+      if (result.status !== 'optimal') return;
+
+      expect(result.plan.surplus).toEqual({});
+      expect(result.plan.resourceDemand['IronOre']).toBeCloseTo(rate, 6);
+    }
+  });
+
   it('returns the same Plan every time, since ties are no longer arbitrary', () => {
     const once = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
     const twice = plan(chainDataset(), [{ part: 'IronPlate', rate: 20 }]);
