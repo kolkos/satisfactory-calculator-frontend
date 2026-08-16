@@ -47,8 +47,16 @@ A throughput, always per minute: items/min for solid Parts, m³/min for fluids a
 _Avoid_: Throughput, speed, per-second, flow rate
 
 **Target**:
-A Part together with the Rate the player wants of it. A Plan is driven by one or more Targets, and each one becomes a single constraint row in the model — which is why supporting several costs the optimiser nothing.
+A Part together with the Rate the player wants of it. Each one becomes a single constraint row in the model — which is why supporting several costs the optimiser nothing.
 _Avoid_: Goal, output, demand, request
+
+**Plan Request**:
+Everything that defines the question a Plan answers: the Targets, and the Extractor Tier to assume. Belongs to the question rather than to the player, so it lives in the URL and is shareable — asking "what would this look like with better miners" is a different Request, not a different person. Distinct from the Unlock Profile, which describes who is asking.
+_Avoid_: Query, input, options, settings
+
+**Extractor Tier**:
+Which generation of mining machine a Plan assumes: Miner Mk.1, Mk.2 or Mk.3, at 60, 120 and 240 per minute on a normal node. Defaults to Mk.3. Not a display detail — because only mined Resources have tiers while every fluid extractor has exactly one, raising the tier makes ores cheaper relative to fluids and genuinely changes which Recipes win.
+_Avoid_: Miner level, mining tier, miner, extractor level
 
 **Plan**:
 The full answer to a set of Targets: which Recipes to run and at what Rate, how many machines of each building type, the resulting Resource Demand, and any Surplus. Machine counts are fractional, because underclocking makes a fractional machine genuinely buildable: a count of 2.5 means three machines with the last at 50%.
@@ -61,7 +69,7 @@ _Avoid_: Overclock, clock, speed, efficiency
 ### Optimisation
 
 **Resource Weight**:
-The scarcity price of one unit per minute of a Resource, defined as `1 / (total available per minute of that Resource across the whole map)`. Water is the only Resource with no limit — extractors need no node and can be placed on any lake — so it alone weighs zero. Every other Resource is finite and priced accordingly, including the gases: nitrogen comes from six resource wells and is genuinely scarce. Part State says nothing about scarcity.
+The scarcity price of one unit per minute of a Resource, defined as `1 / (total available per minute of that Resource across the whole map)`, at the Request's Extractor Tier. Water is the only Resource with no limit — extractors need no node and can be placed on any lake — so it alone weighs zero. Every other Resource is finite and priced accordingly, including the gases: nitrogen comes from six resource wells and is genuinely scarce. Part State says nothing about scarcity.
 _Avoid_: Cost, price, multiplier
 
 **Scarcity Cost**:
